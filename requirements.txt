@@ -1,0 +1,2 @@
+git+https://github.com/SovereignEdgeEU-COGNIT/sem-simulator.git#egg=phoenixsystems-sem&subdirectory=python_api
+git+https://github.com/SovereignEdgeEU-COGNIT/device-runtime-py.git@6eaea1da3f80a70fe34213e538240be892e9c3fc
