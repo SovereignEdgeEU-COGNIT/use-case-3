@@ -7,7 +7,6 @@ from datetime import timedelta
 from typing import Any, Callable, Mapping
 import sys
 
-
 from cognit import (
     EnergySchedulingPolicy,
     FaaSState,
@@ -17,8 +16,8 @@ from cognit import (
 
 import phoenixsystems.sem.metersim as metersim
 
-from device_simulators.device_utils import DeviceUserApi
-from device_simulators.heating import HeatingPreferences
+from home_energy_management.device_simulators.device_utils import DeviceUserApi
+from home_energy_management.device_simulators.heating import HeatingPreferences
 
 
 @dataclass
@@ -72,19 +71,19 @@ class UserApp:
     last_storage_charge_level: float = 0.0
 
     def __init__(
-        self,
-        metrology: metersim.Metersim,
-        decision_algo: Callable,
-        model_parameters: dict[str, float],
-        pv: DeviceUserApi,
-        energy_storage: DeviceUserApi,
-        room_heating: Mapping[str, DeviceUserApi],
-        temp_outside_sensor: DeviceUserApi,
-        speedup: int,
-        cycle: int,
-        heating_user_preferences: dict[str, HeatingPreferences],
-        use_cognit: bool = True,
-        cognit_timeout: int = 3,
+            self,
+            metrology: metersim.Metersim,
+            decision_algo: Callable,
+            model_parameters: dict[str, float],
+            pv: DeviceUserApi,
+            energy_storage: DeviceUserApi,
+            room_heating: Mapping[str, DeviceUserApi],
+            temp_outside_sensor: DeviceUserApi,
+            speedup: int,
+            cycle: int,
+            heating_user_preferences: dict[str, HeatingPreferences],
+            use_cognit: bool = True,
+            cognit_timeout: int = 3,
     ) -> None:
         self.metrology = metrology
         self.decision_algo = decision_algo
@@ -321,9 +320,9 @@ class UserApp:
                 slept = False
 
                 while (
-                    time.clock_gettime(time.CLOCK_MONOTONIC)
-                    < (self.cycle_time / self.speedup + self.last_algo_run)
-                    and not self.shutdown_flag
+                        time.clock_gettime(time.CLOCK_MONOTONIC)
+                        < (self.cycle_time / self.speedup + self.last_algo_run)
+                        and not self.shutdown_flag
                 ) or not slept:
                     sleep_time = max(
                         self.cycle_time / self.speedup

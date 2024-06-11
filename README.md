@@ -9,7 +9,7 @@ To prepare the environment please follow the steps:
 ```bash
 python3 -m venv demo_venv
 source demo_venv/bin/activate
-pip3 install -r requirements
+pip3 install -r requirements.txt
 ```
 
 * Inside this directory put the cognit runtime config file `cognit.yml` (with all the necessary authorization data).
