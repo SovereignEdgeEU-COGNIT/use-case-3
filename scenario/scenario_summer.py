@@ -76,3 +76,11 @@ CONSUMPTION_CONFIG = [
     (22 * HOUR, [6, 0, 0]),
     (23 * HOUR, [6, 0, 0]),
 ]
+
+EV_POWER_CONFIG = [
+    (0 * HOUR, 0),
+    (8 * HOUR, 5),
+    (15 * HOUR, 0),
+    (20 * HOUR, 8),
+    (22 * HOUR, 0),
+]

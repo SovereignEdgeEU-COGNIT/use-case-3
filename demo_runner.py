@@ -3,9 +3,11 @@ import textwrap
 import sys
 
 import importlib.util
+from typing import Optional
 
 from home_energy_management.decision_algo import run_one_step
 from home_energy_management.device_simulators.device_utils import make_current
+from home_energy_management.device_simulators.electric_vehicle import ElectricVehicle, LiveEVDriving, ScheduledEVDriving
 from home_energy_management.device_simulators.heating import (
     RoomHeating,
     ScheduledTempSensor,
@@ -23,6 +25,7 @@ from scenario.config import (
     USER_APP_CYCLE_LENGTH,
     MODEL_PARAMETERS,
     STORAGE_CONFIG,
+    EV_CONFIG,
     HEATING_CONFIG,
     INITIAL_STATE,
 )
@@ -78,6 +81,7 @@ if cmd_args.scenario is not None:
     PV_CONFIG = scenario.PV_CONFIG
     CONSUMPTION_CONFIG = scenario.CONSUMPTION_CONFIG
     HEATING_PREFERENCES = scenario.HEATING_PREFERENCES
+    EV_POWER_CONFIG = scenario.EV_POWER_CONFIG
     LOOP = scenario.LOOP
 
 
@@ -89,12 +93,15 @@ if cmd_args.live:
     pv = LivePV()
     consumption = SimpleLiveDevice()
     heating_preferences = LiveHeatingPreferences(INITIAL_STATE["heating_preferences"])
+    ev_driving = LiveEVDriving(INITIAL_STATE["ev_driving_power"], 8.0)
+    other_devices.append(ev_driving)
 else:
     temp_outside_sensor = ScheduledTempSensor(TEMP_OUTSIDE_CONFIG, LOOP)
     pv = ScheduledPV(PV_CONFIG, LOOP)
     consumption = SimpleScheduledDevice(CONSUMPTION_CONFIG, LOOP)
     heating_preferences = ScheduledHeatingPreferences(HEATING_PREFERENCES, LOOP)
-    other_devices.append(heating_preferences)
+    ev_driving = ScheduledEVDriving(EV_POWER_CONFIG, LOOP)
+    other_devices.extend([heating_preferences, ev_driving])
 
 storage = Storage(
     max_power=STORAGE_CONFIG["max_power"],
@@ -110,6 +117,26 @@ storage = Storage(
     operation_mode=2,
     last_capacity_update=0,
     voltage=[0.0, 0.0, 0.0],
+)
+
+electric_vehicle = ElectricVehicle(
+    max_power=EV_CONFIG["max_power"],
+    max_capacity=EV_CONFIG["max_capacity"],
+    min_charge_level=EV_CONFIG["min_charge_level"],
+    charged_level=EV_CONFIG["charged_level"],
+    charging_switch_level=EV_CONFIG["charging_switch_level"],
+    efficiency=EV_CONFIG["efficiency"],
+    energy_loss=EV_CONFIG["energy_loss"],
+    is_available=INITIAL_STATE["ev_driving_power"] == 0.0,
+    get_driving_power=ev_driving.get_driving_power,
+    current=[0, 0, 0],
+    curr_capacity=INITIAL_STATE["ev_battery_capacity"],
+    max_charge_rate=1.0,
+    max_discharge_rate=1.0,
+    operation_mode=0,
+    last_capacity_update=0,
+    get_time_until_charged=ev_driving.get_time_until_charged,
+    voltage=[0, 0, 0],
 )
 
 room_heating = {
@@ -137,6 +164,7 @@ simulation = SimulationRunner(
     storage=storage,
     consumption_device=consumption,
     room_heating=room_heating,
+    electric_vehicle=electric_vehicle,
     other_devices=other_devices,
     temp_outside=temp_outside_sensor,
     speedup=SPEEDUP,
@@ -149,6 +177,7 @@ app = UserApp(
     decision_algo=run_one_step,
     model_parameters=MODEL_PARAMETERS,
     pv=pv,
+    electric_vehicle=electric_vehicle,
     energy_storage=storage,
     room_heating=room_heating,
     temp_outside_sensor=temp_outside_sensor,
@@ -238,6 +267,10 @@ def print_help():
             "set_temp_outside(temp: float)",
             "sets temperature outside",
         ),
+        (
+            "set_ev_driving(driving_power: float, time_until_charged_h: float)",
+            "sets EV driving power and optionally time in hours until EV must be charged (ready for driving)",
+        ),
     ]
 
     if cmd_args.live:
@@ -286,6 +319,13 @@ def set_temp_outside(temp: float):
     temp_outside_sensor.set_temp(temp)
 
 
+def set_ev_driving(driving_power: float, time_until_charged_h: Optional[float] = None):
+    if not cmd_args.live:
+        print("Error: Live mode disabled")
+        return
+    ev_driving.update_state(driving_power, time_until_charged_h)
+
+
 def set_speedup(speedup: int):
     if speedup < 1:
         print("Error: speedup should be >= 1")
@@ -321,6 +361,7 @@ if cmd_args.live:
         f"\n  Heating preferences (°C): {INITIAL_STATE['heating_preferences']}",
         "\n  Consumption current (A): 0",
         "\n  PV current (A): 0",
+        f"\n  EV driving power (kW): {INITIAL_STATE['ev_driving_power']}",
     )
 simulation.start()
 app.start()

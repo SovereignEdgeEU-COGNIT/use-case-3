@@ -90,3 +90,8 @@ In *live* mode additionally one can use:
 * `set_consumption(current: float)` – sets auto-consumption (use positive values for consumption)
 
 * `set_temp_outside(temp: float)` – sets temperature outside
+
+* `set_ev_driving(driving_power: float, time_until_charged_h: Optional[float])` - sets EV driving power and optionally 
+time in hours until EV must be charged (ready for driving). Setting the power to positive number means that the car is 
+driving and its charge level will decrease according to this parameter. However, setting it to 0 is interpreted as the 
+car arriving and connecting it to the home charger.
