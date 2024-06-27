@@ -5,12 +5,11 @@ import time
 import logging
 
 import phoenixsystems.sem.metersim as metersim
-from device_simulators.heating import RoomHeating, TempSensor
-from device_simulators.storage import Storage
-from device_simulators.gateway import Gateway
-from device_simulators.photovoltaic import AbstractPV
-from device_simulators.simple_device import SimpleDevice
-
+from home_energy_management.device_simulators.heating import RoomHeating, TempSensor
+from home_energy_management.device_simulators.storage import Storage
+from home_energy_management.device_simulators.gateway import Gateway
+from home_energy_management.device_simulators.photovoltaic import AbstractPV
+from home_energy_management.device_simulators.simple_device import SimpleDevice
 
 log_handler = logging.FileHandler("simulation.log")
 formatter = logging.Formatter("")
@@ -36,15 +35,15 @@ class SimulationRunner:
     shutdown_flag: bool
 
     def __init__(
-        self,
-        pv: AbstractPV,
-        storage: Storage,
-        consumption_device: SimpleDevice,
-        room_heating: dict[str, RoomHeating],
-        other_devices: list[metersim.Device],
-        temp_outside: TempSensor,
-        speedup: int,
-        scenario_dir: str,
+            self,
+            pv: AbstractPV,
+            storage: Storage,
+            consumption_device: SimpleDevice,
+            room_heating: dict[str, RoomHeating],
+            other_devices: list[metersim.Device],
+            temp_outside: TempSensor,
+            speedup: int,
+            scenario_dir: str,
     ):
         self.pv = pv
         self.consumption_device = consumption_device

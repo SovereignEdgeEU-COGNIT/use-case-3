@@ -4,23 +4,20 @@ import sys
 
 import importlib.util
 
-from simulation_runner import SimulationRunner
-from user_app import UserApp
-
-from device_simulators.photovoltaic import LivePV, ScheduledPV
-from device_simulators.storage import Storage
-from device_simulators.simple_device import SimpleLiveDevice, SimpleScheduledDevice
-from device_simulators.heating import (
+from home_energy_management.decision_algo import run_one_step
+from home_energy_management.device_simulators.device_utils import make_current
+from home_energy_management.device_simulators.heating import (
     RoomHeating,
     ScheduledTempSensor,
     LiveTempSensor,
     LiveHeatingPreferences,
     ScheduledHeatingPreferences,
 )
-from device_simulators.device_utils import make_current
+from home_energy_management.device_simulators.photovoltaic import LivePV, ScheduledPV
+from home_energy_management.device_simulators.simple_device import SimpleLiveDevice, SimpleScheduledDevice
+from home_energy_management.device_simulators.storage import Storage
 
-from decision_algo import run_one_step
-
+from simulation_runner import SimulationRunner
 from scenario.config import (
     SPEEDUP,
     USER_APP_CYCLE_LENGTH,
@@ -29,6 +26,8 @@ from scenario.config import (
     HEATING_CONFIG,
     INITIAL_STATE,
 )
+from user_app import UserApp
+
 
 # Parse the arguments
 parser = argparse.ArgumentParser()
@@ -101,6 +100,7 @@ storage = Storage(
     max_power=STORAGE_CONFIG["max_power"],
     max_capacity=STORAGE_CONFIG["max_capacity"],
     min_charge_level=STORAGE_CONFIG["min_charge_level"],
+    charging_switch_level=STORAGE_CONFIG["charging_switch_level"],
     efficiency=STORAGE_CONFIG["efficiency"],
     energy_loss=STORAGE_CONFIG["energy_loss"],
     current=[0.0, 0.0, 0.0],
@@ -115,7 +115,7 @@ storage = Storage(
 room_heating = {
     "room": RoomHeating(
         heat_capacity=HEATING_CONFIG["room"]["heat_capacity"],
-        heating_coeff=HEATING_CONFIG["room"]["heating_coeff"],
+        heating_coefficient=HEATING_CONFIG["room"]["heating_coefficient"],
         heating_loss=HEATING_CONFIG["room"]["heating_loss"],
         name="room",
         temp_window=HEATING_CONFIG["room"]["temp_window"],
