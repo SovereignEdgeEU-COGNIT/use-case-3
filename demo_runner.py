@@ -3,8 +3,9 @@ import textwrap
 import sys
 
 import importlib.util
+from datetime import datetime
 
-from home_energy_management.decision_algo import run_one_step
+from home_energy_management.ppo_algorithm import make_decision, training_function
 from home_energy_management.device_simulators.device_utils import make_current
 from home_energy_management.device_simulators.electric_vehicle import (
     ElectricVehicle,
@@ -28,14 +29,22 @@ from simulation_runner import SimulationRunner
 from scenario.config import (
     SPEEDUP,
     USER_APP_CYCLE_LENGTH,
+    NUM_CYCLES_RETRAIN,
     MODEL_PARAMETERS,
+    TRAIN_PARAMETERS,
     STORAGE_CONFIG,
     EV_CONFIG,
     HEATING_CONFIG,
     INITIAL_STATE,
+    TRAINED_MODEL_PATH,
+    PV_PRODUCTION_REAL_PATH,
+    PV_PRODUCTION_PRED_PATH,
+    UNCONTROLLED_CONSUMPTION_REAL_PATH,
+    UNCONTROLLED_CONSUMPTION_PRED_PATH,
+    TEMP_OUTSIDE_REAL_PATH,
+    TEMP_OUTSIDE_PRED_PATH,
 )
-from user_app import UserApp
-
+from user_app import UserApp, TimeSeries
 
 # Parse the arguments
 parser = argparse.ArgumentParser()
@@ -60,6 +69,10 @@ parser.add_argument(
 parser.add_argument(
     "--cycle",
     help="userapp cycle length",
+)
+parser.add_argument(
+    "--num_cycles_retrain",
+    help="userapp number of cycles after which to retrain decision model",
 )
 cmd_args = parser.parse_args()
 
@@ -90,6 +103,7 @@ if cmd_args.scenario is not None:
     scenario = importlib.util.module_from_spec(scenario_spec)
     scenario_spec.loader.exec_module(scenario)
 
+    START_DATE = scenario.START_DATE
     TEMP_OUTSIDE_CONFIG = scenario.TEMP_OUTSIDE_CONFIG
     PV_CONFIG = scenario.PV_CONFIG
     CONSUMPTION_CONFIG = scenario.CONSUMPTION_CONFIG
@@ -101,23 +115,27 @@ if cmd_args.scenario is not None:
 if cmd_args.speedup is not None and cmd_args.cycle is not None:
     speedup = int(cmd_args.speedup)
     userapp_cycle = int(cmd_args.cycle)
+    num_cycles_retrain = int(cmd_args.num_cycles_retrain)
 else:
     speedup = SPEEDUP
     userapp_cycle = USER_APP_CYCLE_LENGTH
+    num_cycles_retrain = NUM_CYCLES_RETRAIN
 
 
 # Initialize the devices
 other_devices = []
 
 if cmd_args.live:
+    start_date = datetime.fromisoformat(INITIAL_STATE["start_date"])
     temp_outside_sensor = LiveTempSensor(INITIAL_STATE["live_temp_outside"])
     pv = LivePV()
     consumption = SimpleLiveDevice()
     heating_preferences = LiveHeatingPreferences(INITIAL_STATE["heating_preferences"])
     ev_driving = LiveEVDriving(INITIAL_STATE["ev_driving_power"])
-    ev_departure_plans = LiveEVDeparturePlans("08:00")
+    ev_departure_plans = LiveEVDeparturePlans(INITIAL_STATE["ev_departure_time"])
     other_devices.append(ev_departure_plans)
 else:
+    start_date = datetime.fromisoformat(START_DATE)
     temp_outside_sensor = ScheduledTempSensor(TEMP_OUTSIDE_CONFIG, LOOP)
     pv = ScheduledPV(PV_CONFIG, LOOP)
     consumption = SimpleScheduledDevice(CONSUMPTION_CONFIG, LOOP)
@@ -146,7 +164,7 @@ electric_vehicle = ElectricVehicle(
     max_power=EV_CONFIG["max_power"],
     max_capacity=EV_CONFIG["max_capacity"],
     min_charge_level=EV_CONFIG["min_charge_level"],
-    charged_level=EV_CONFIG["charged_level"],
+    driving_charge_level=EV_CONFIG["driving_charge_level"],
     charging_switch_level=EV_CONFIG["charging_switch_level"],
     efficiency=EV_CONFIG["efficiency"],
     energy_loss=EV_CONFIG["energy_loss"],
@@ -192,12 +210,15 @@ simulation = SimulationRunner(
     speedup=SPEEDUP,
 )
 
-
 print("Initializing User Application")
 app = UserApp(
+    start_date=start_date,
     metrology=simulation.sem,
-    decision_algo=run_one_step,
+    decision_algo=make_decision,
+    training_algo=training_function,
+    model_path=TRAINED_MODEL_PATH,
     model_parameters=MODEL_PARAMETERS,
+    train_parameters=TRAIN_PARAMETERS,
     pv=pv,
     electric_vehicle=electric_vehicle,
     energy_storage=storage,
@@ -205,11 +226,18 @@ app = UserApp(
     temp_outside_sensor=temp_outside_sensor,
     speedup=speedup,
     cycle=userapp_cycle,
+    num_cycles_retrain=num_cycles_retrain,
     use_cognit=cmd_args.offload,
     heating_user_preferences={
         "room": heating_preferences,
     },
-    ev_departure_plans=ev_departure_plans
+    ev_departure_plans=ev_departure_plans,
+    pv_production_series=TimeSeries.from_csv(PV_PRODUCTION_REAL_PATH),
+    pv_production_pred_series=TimeSeries.from_csv(PV_PRODUCTION_PRED_PATH),
+    consumption_series=TimeSeries.from_csv(UNCONTROLLED_CONSUMPTION_REAL_PATH),
+    consumption_pred_series=TimeSeries.from_csv(UNCONTROLLED_CONSUMPTION_PRED_PATH),
+    temp_outside_series=TimeSeries.from_csv(TEMP_OUTSIDE_REAL_PATH),
+    temp_outside_pred_series=TimeSeries.from_csv(TEMP_OUTSIDE_PRED_PATH),
 )
 
 
