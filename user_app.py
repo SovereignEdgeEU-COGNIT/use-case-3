@@ -18,6 +18,7 @@ import phoenixsystems.sem.metersim as metersim
 
 from home_energy_management.device_simulators.device_utils import DeviceUserApi
 from home_energy_management.device_simulators.heating import HeatingPreferences
+from home_energy_management.device_simulators.electric_vehicle import EVDeparturePlans
 
 
 @dataclass
@@ -43,6 +44,7 @@ class UserApp:
     metrology: metersim.Metersim  # Metrology
     runtime: ServerlessRuntimeContext  # Cognit Serverless Runtime
     heating_user_preferences: dict[str, HeatingPreferences]
+    ev_departure_plans: EVDeparturePlans
     cycle_time: int
     speedup: int
     model_parameters: dict[str, float]
@@ -88,6 +90,7 @@ class UserApp:
             speedup: int,
             cycle: int,
             heating_user_preferences: dict[str, HeatingPreferences],
+            ev_departure_plans: EVDeparturePlans,
             use_cognit: bool = True,
             cognit_timeout: int = 3,
     ) -> None:
@@ -103,6 +106,7 @@ class UserApp:
         self.speedup = speedup
         self.cycle_time = cycle
         self.heating_user_preferences = heating_user_preferences
+        self.ev_departure_plans = ev_departure_plans
         self.model_parameters = model_parameters
 
         self.shutdown_flag = False
@@ -180,6 +184,7 @@ class UserApp:
         self.last_algo_run = now
         storage_parameters = self.energy_storage.get_info()
         ev_parameters = self.electric_vehicle.get_info()
+        ev_parameters["time_until_charged"] = self.ev_departure_plans.get_time_until_departure()
         room_heating_params_list = []
         for room, value in self.heating_user_preferences.items():
             params = self.room_heating[room].get_info()
@@ -300,11 +305,13 @@ class UserApp:
             f"\n\t- efficiency: {storage_parameters['efficiency']}"
         )
         ev_battery_parameters = algo_input.ev_battery_parameters
+        time_until_ev_charged = ev_battery_parameters['time_until_charged']
         self.app_logger.info(
             f"EV battery parameters: \n\t- max capacity (kWh): {ev_battery_parameters['max_capacity']}, "
             f"\n\t- is available: {ev_battery_parameters['is_available']}, "
-            f"\n\t- already charged SOC (%): {ev_battery_parameters['charged_level']}, "
-            f"\n\t- time until charged (s): {ev_battery_parameters['time_until_charged']}, "
+            f"\n\t- departure SOC (%): {ev_battery_parameters['charged_level']}, "
+            f"\n\t- time until charged (h): "
+            f"{round(time_until_ev_charged / 3600, 2) if time_until_ev_charged > 0 else 'uknown'}, "
             f"\n\t- nominal power (kW): {ev_battery_parameters['nominal_power']}, "
             f"\n\t- efficiency: {ev_battery_parameters['efficiency']}"
         )

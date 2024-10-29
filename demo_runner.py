@@ -3,11 +3,16 @@ import textwrap
 import sys
 
 import importlib.util
-from typing import Optional
 
 from home_energy_management.decision_algo import run_one_step
 from home_energy_management.device_simulators.device_utils import make_current
-from home_energy_management.device_simulators.electric_vehicle import ElectricVehicle, LiveEVDriving, ScheduledEVDriving
+from home_energy_management.device_simulators.electric_vehicle import (
+    ElectricVehicle,
+    LiveEVDriving,
+    ScheduledEVDriving,
+    LiveEVDeparturePlans,
+    ScheduledEVDeparturePlans
+)
 from home_energy_management.device_simulators.heating import (
     RoomHeating,
     ScheduledTempSensor,
@@ -93,15 +98,17 @@ if cmd_args.live:
     pv = LivePV()
     consumption = SimpleLiveDevice()
     heating_preferences = LiveHeatingPreferences(INITIAL_STATE["heating_preferences"])
-    ev_driving = LiveEVDriving(INITIAL_STATE["ev_driving_power"], 8.0)
-    other_devices.append(ev_driving)
+    ev_driving = LiveEVDriving(INITIAL_STATE["ev_driving_power"])
+    ev_departure_plans = LiveEVDeparturePlans("08:00")
+    other_devices.append(ev_departure_plans)
 else:
     temp_outside_sensor = ScheduledTempSensor(TEMP_OUTSIDE_CONFIG, LOOP)
     pv = ScheduledPV(PV_CONFIG, LOOP)
     consumption = SimpleScheduledDevice(CONSUMPTION_CONFIG, LOOP)
     heating_preferences = ScheduledHeatingPreferences(HEATING_PREFERENCES, LOOP)
     ev_driving = ScheduledEVDriving(EV_POWER_CONFIG, LOOP)
-    other_devices.extend([heating_preferences, ev_driving])
+    ev_departure_plans = ScheduledEVDeparturePlans(EV_POWER_CONFIG, LOOP)
+    other_devices.extend([heating_preferences, ev_driving, ev_departure_plans])
 
 storage = Storage(
     max_power=STORAGE_CONFIG["max_power"],
@@ -135,7 +142,6 @@ electric_vehicle = ElectricVehicle(
     max_discharge_rate=1.0,
     operation_mode=0,
     last_capacity_update=0,
-    get_time_until_charged=ev_driving.get_time_until_charged,
     voltage=[0, 0, 0],
 )
 
@@ -187,6 +193,7 @@ app = UserApp(
     heating_user_preferences={
         "room": heating_preferences,
     },
+    ev_departure_plans=ev_departure_plans
 )
 
 
@@ -268,8 +275,12 @@ def print_help():
             "sets temperature outside",
         ),
         (
-            "set_ev_driving(driving_power: float, time_until_charged_h: float)",
-            "sets EV driving power and optionally time in hours until EV must be charged (ready for driving)",
+            "set_ev_driving_power(driving_power: float)",
+            "sets EV driving power",
+        ),
+        (
+            "set_ev_departure_time(ev_departure_time: str)",
+            "sets user-planned EV departure time in format %H:%M when EV must be charged",
         ),
     ]
 
@@ -319,11 +330,18 @@ def set_temp_outside(temp: float):
     temp_outside_sensor.set_temp(temp)
 
 
-def set_ev_driving(driving_power: float, time_until_charged_h: Optional[float] = None):
+def set_ev_driving_power(driving_power: float):
     if not cmd_args.live:
         print("Error: Live mode disabled")
         return
-    ev_driving.update_state(driving_power, time_until_charged_h)
+    ev_driving.set_driving_power(driving_power)
+
+
+def set_ev_departure_time(ev_departure_time: str):
+    if not cmd_args.live:
+        print("Error: Live mode disabled")
+        return
+    ev_departure_plans.update_state(ev_departure_time)
 
 
 def set_speedup(speedup: int):
@@ -362,6 +380,7 @@ if cmd_args.live:
         "\n  Consumption current (A): 0",
         "\n  PV current (A): 0",
         f"\n  EV driving power (kW): {INITIAL_STATE['ev_driving_power']}",
+        "\n  EV departure time planned: 08:00",
     )
 simulation.start()
 app.start()
