@@ -18,6 +18,7 @@ import phoenixsystems.sem.metersim as metersim
 
 from home_energy_management.device_simulators.device_utils import DeviceUserApi
 from home_energy_management.device_simulators.heating import HeatingPreferences
+from home_energy_management.device_simulators.electric_vehicle import EVDeparturePlans
 
 
 @dataclass
@@ -25,6 +26,7 @@ class AlgoParams:
     model_parameters: dict[str, float]
     step_timedelta_s: int
     storage_parameters: dict[str, float]
+    ev_battery_parameters: dict[str, float]
     room_heating_params_list: list[dict[str, Any]]
     energy_drawn_from_grid: float
     energy_returned_to_grid: float
@@ -32,6 +34,8 @@ class AlgoParams:
     temp_outdoor: float
     charge_level_of_storage: float
     prev_charge_level_of_storage: float
+    charge_level_of_ev_battery: float
+    prev_charge_level_of_ev_battery: float
     heating_status_per_room: dict[str, list[bool]]
     temp_per_room: dict[str, float]
 
@@ -40,6 +44,7 @@ class UserApp:
     metrology: metersim.Metersim  # Metrology
     runtime: ServerlessRuntimeContext  # Cognit Serverless Runtime
     heating_user_preferences: dict[str, HeatingPreferences]
+    ev_departure_plans: EVDeparturePlans
     cycle_time: int
     speedup: int
     model_parameters: dict[str, float]
@@ -50,6 +55,7 @@ class UserApp:
     # Devices
     pv: DeviceUserApi
     energy_storage: DeviceUserApi
+    electric_vehicle: DeviceUserApi
     room_heating: Mapping[str, DeviceUserApi]
     temp_outside_sensor: DeviceUserApi
 
@@ -69,6 +75,7 @@ class UserApp:
     last_active_minus: int = 0
     last_pv_energy: float = 0.0
     last_storage_charge_level: float = 0.0
+    last_ev_battery_charge_level: float = 0.0
 
     def __init__(
             self,
@@ -77,11 +84,13 @@ class UserApp:
             model_parameters: dict[str, float],
             pv: DeviceUserApi,
             energy_storage: DeviceUserApi,
+            electric_vehicle: DeviceUserApi,
             room_heating: Mapping[str, DeviceUserApi],
             temp_outside_sensor: DeviceUserApi,
             speedup: int,
             cycle: int,
             heating_user_preferences: dict[str, HeatingPreferences],
+            ev_departure_plans: EVDeparturePlans,
             use_cognit: bool = True,
             cognit_timeout: int = 3,
     ) -> None:
@@ -89,6 +98,7 @@ class UserApp:
         self.decision_algo = decision_algo
         self.pv = pv
         self.energy_storage = energy_storage
+        self.electric_vehicle = electric_vehicle
         self.room_heating = room_heating
         self.temp_outside_sensor = temp_outside_sensor
         self.use_cognit = use_cognit
@@ -96,6 +106,7 @@ class UserApp:
         self.speedup = speedup
         self.cycle_time = cycle
         self.heating_user_preferences = heating_user_preferences
+        self.ev_departure_plans = ev_departure_plans
         self.model_parameters = model_parameters
 
         self.shutdown_flag = False
@@ -172,6 +183,8 @@ class UserApp:
         step_timedelta_s = math.floor((now - self.last_algo_run) * self.speedup)
         self.last_algo_run = now
         storage_parameters = self.energy_storage.get_info()
+        ev_parameters = self.electric_vehicle.get_info()
+        ev_parameters["time_until_charged"] = self.ev_departure_plans.get_time_until_departure()
         room_heating_params_list = []
         for room, value in self.heating_user_preferences.items():
             params = self.room_heating[room].get_info()
@@ -194,6 +207,10 @@ class UserApp:
         prev_charge_level_of_storage = self.last_storage_charge_level
         self.last_storage_charge_level = charge_level_of_storage
 
+        charge_level_of_ev_battery = self.electric_vehicle.get_info()["curr_charge_level"]
+        prev_charge_level_of_ev_battery = self.last_ev_battery_charge_level
+        self.last_ev_battery_charge_level = charge_level_of_ev_battery
+
         heating_status_per_room = {}
         temp_per_room = {}
         for room in room_heating_params_list:
@@ -204,6 +221,7 @@ class UserApp:
             self.model_parameters,
             step_timedelta_s,
             storage_parameters,
+            ev_parameters,
             room_heating_params_list,
             energy_drawn_from_grid / 3.6e6,
             energy_returned_to_grid / 3.6e6,
@@ -211,6 +229,8 @@ class UserApp:
             temp_outdoor,
             charge_level_of_storage,
             prev_charge_level_of_storage,
+            charge_level_of_ev_battery,
+            prev_charge_level_of_ev_battery,
             heating_status_per_room,
             temp_per_room,
         )
@@ -220,11 +240,14 @@ class UserApp:
         (
             conf_temp_per_room,
             storage_params,
+            ev_params,
             next_temp_per_room,
             next_charge_level_of_storage,
+            next_charge_level_of_ev_battery,
             energy_from_power_grid,
         ) = algo_res
         self.energy_storage.set_params(storage_params)
+        self.electric_vehicle.set_params(ev_params)
         for key, value in self.room_heating.items():
             value.set_params(
                 {
@@ -271,7 +294,7 @@ class UserApp:
             f"\n\t- heating delta temperature (K): {model_parameters['heating_delta_temperature']}, "
             f"\n\t- heating coefficient: {model_parameters['heating_coefficient']}, "
             f"\n\t- heat loss coefficient (W/K): {model_parameters['heat_loss_coefficient']}, "
-            f"\n\t- storage delta power (%): {model_parameters['storage_delta_power_perc']}, "
+            f"\n\t- delta charging power (%): {model_parameters['delta_charging_power_perc']}, "
             f"\n\t- storage high SOC (%): {model_parameters['storage_high_charge_level']}"
         )
         storage_parameters = algo_input.storage_parameters
@@ -280,6 +303,17 @@ class UserApp:
             f"\n\t- minimal SOC (%): {storage_parameters['min_charge_level']}, "
             f"\n\t- nominal power (kW): {storage_parameters['nominal_power']}, "
             f"\n\t- efficiency: {storage_parameters['efficiency']}"
+        )
+        ev_battery_parameters = algo_input.ev_battery_parameters
+        time_until_ev_charged = ev_battery_parameters['time_until_charged']
+        self.app_logger.info(
+            f"EV battery parameters: \n\t- max capacity (kWh): {ev_battery_parameters['max_capacity']}, "
+            f"\n\t- is available: {ev_battery_parameters['is_available']}, "
+            f"\n\t- departure SOC (%): {ev_battery_parameters['charged_level']}, "
+            f"\n\t- time until charged (h): "
+            f"{round(time_until_ev_charged / 3600, 2) if time_until_ev_charged > 0 else 'uknown'}, "
+            f"\n\t- nominal power (kW): {ev_battery_parameters['nominal_power']}, "
+            f"\n\t- efficiency: {ev_battery_parameters['efficiency']}"
         )
         heating_parameters = algo_input.room_heating_params_list[0]
         self.app_logger.info(
@@ -298,6 +332,12 @@ class UserApp:
         self.app_logger.info(
             f"Previous storage SOC (%): {round(algo_input.prev_charge_level_of_storage, 2)}"
         )
+        self.app_logger.info(
+            f"Current EV battery SOC (%): {round(algo_input.charge_level_of_ev_battery, 2)}"
+        )
+        self.app_logger.info(
+            f"Previous EV battery SOC (%): {round(algo_input.prev_charge_level_of_ev_battery, 2)}"
+        )
 
         if algo_res is not None:
             self.execute_algo_response(algo_res)
@@ -307,9 +347,11 @@ class UserApp:
                 f"Configuration of temperature (°C): {round(algo_res[0][room_name], 2)}"
             )
             self.app_logger.info(f"Configuration of storage: {algo_res[1]}")
-            self.app_logger.info(f"Predicted temperature (°C): {round(algo_res[2][room_name], 2)}")
-            self.app_logger.info(f"Predicted SOC (%): {round(algo_res[3], 2)}")
-            self.app_logger.info(f"Predicted energy A+ (kWh): {round(algo_res[4], 2)}")
+            self.app_logger.info(f"Configuration of EV battery: {algo_res[2]}")
+            self.app_logger.info(f"Predicted temperature (°C): {round(algo_res[3][room_name], 2)}")
+            self.app_logger.info(f"Predicted SOC of storage (%): {round(algo_res[4], 2)}")
+            self.app_logger.info(f"Predicted SOC of EV battery (%): {round(algo_res[5], 2)}")
+            self.app_logger.info(f"Predicted energy A+ (kWh): {round(algo_res[6], 2)}")
         else:
             self.app_logger.warning(f"Decision algorithm call failed")
 

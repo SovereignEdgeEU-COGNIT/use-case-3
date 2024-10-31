@@ -5,6 +5,7 @@ import time
 import logging
 
 import phoenixsystems.sem.metersim as metersim
+from home_energy_management.device_simulators.electric_vehicle import ElectricVehicle
 from home_energy_management.device_simulators.heating import RoomHeating, TempSensor
 from home_energy_management.device_simulators.storage import Storage
 from home_energy_management.device_simulators.gateway import Gateway
@@ -28,6 +29,7 @@ class SimulationRunner:
     consumption_device: SimpleDevice
     room_heating: dict[str, RoomHeating]
     gateway: Gateway
+    electric_vehicle: ElectricVehicle
     other_devices: list[metersim.Device]
     temp_outside: TempSensor
 
@@ -40,6 +42,7 @@ class SimulationRunner:
             storage: Storage,
             consumption_device: SimpleDevice,
             room_heating: dict[str, RoomHeating],
+            electric_vehicle: ElectricVehicle,
             other_devices: list[metersim.Device],
             temp_outside: TempSensor,
             speedup: int,
@@ -49,6 +52,7 @@ class SimulationRunner:
         self.consumption_device = consumption_device
         self.storage = storage
         self.room_heating = room_heating
+        self.electric_vehicle = electric_vehicle
         self.temp_outside = temp_outside
         self.other_devices = other_devices
         self.speedup = speedup
@@ -75,6 +79,7 @@ class SimulationRunner:
 
         devices = [
             self.consumption_device,
+            self.electric_vehicle,
             self.temp_outside,
             *self.other_devices,
             *self.room_heating.values(),
@@ -104,7 +109,17 @@ class SimulationRunner:
             f"\n\t- Current (A): {round(self.storage.current[0].real, 2)}"
             f"\n\t- SOC (%): {round(self.storage.get_info()['curr_charge_level'], 2)}"
         )
-        logger.info(f"Photovoltaic:" f"\n\t- Current (A): {round(self.pv.current[0].real, 2)}")
+        logger.info(
+            f"Electric Vehicle:"
+            f"\n\t- Is available: {self.electric_vehicle.get_info()['is_available']}"
+            f"\n\t- Driving power (kW): {round(self.electric_vehicle.get_info()['driving_power'], 2)}"
+            f"\n\t- Current (A): {round(self.electric_vehicle.current[0].real, 2)}"
+            f"\n\t- SOC (%): {round(self.electric_vehicle.get_info()['curr_charge_level'], 2)}"
+        )
+        logger.info(
+            f"Photovoltaic:" 
+            f"\n\t- Current (A): {round(self.pv.current[0].real, 2)}"
+        )
         logger.info(
             f"Heating:"
             f"\n\t- Current temperature (°C): {round(self.room_heating['room'].get_info()['curr_temp'], 2)}"

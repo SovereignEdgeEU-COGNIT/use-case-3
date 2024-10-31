@@ -76,3 +76,14 @@ CONSUMPTION_CONFIG = [
     (22 * HOUR, [6, 0, 0]),
     (23 * HOUR, [6, 0, 0]),
 ]
+
+# Power of EV driving - positive value implies that the car is driving and energy in its battery is consumed, while 0
+# means it is connected to the charger at home. Plans of EV departure are also read from this schedule as next time of
+# non-zero power.
+EV_POWER_CONFIG = [
+    (0 * HOUR, 0),
+    (8 * HOUR, 5),
+    (15 * HOUR, 0),
+    (20 * HOUR, 8),
+    (22 * HOUR, 0),
+]
