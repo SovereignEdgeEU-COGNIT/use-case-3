@@ -17,7 +17,7 @@ formatter = logging.Formatter("")
 log_handler.setFormatter(formatter)
 logger = logging.Logger("simulation")
 logger.addHandler(log_handler)
-
+logger.setLevel(logging.ERROR)
 
 class SimulationRunner:
     sem: metersim.Metersim

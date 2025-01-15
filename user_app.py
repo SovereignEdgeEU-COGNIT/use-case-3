@@ -7,12 +7,7 @@ from datetime import timedelta
 from typing import Any, Callable, Mapping
 import sys
 
-from cognit import (
-    EnergySchedulingPolicy,
-    FaaSState,
-    ServerlessRuntimeConfig,
-    ServerlessRuntimeContext,
-)
+from cognit import device_runtime
 
 import phoenixsystems.sem.metersim as metersim
 
@@ -20,6 +15,11 @@ from home_energy_management.device_simulators.device_utils import DeviceUserApi
 from home_energy_management.device_simulators.heating import HeatingPreferences
 from home_energy_management.device_simulators.electric_vehicle import EVDeparturePlans
 
+
+REQS_INIT = {
+      "FLAVOUR": "EnergyV2",
+      "MIN_ENERGY_RENEWABLE_USAGE": 50,
+}
 
 @dataclass
 class AlgoParams:
@@ -42,7 +42,7 @@ class AlgoParams:
 
 class UserApp:
     metrology: metersim.Metersim  # Metrology
-    runtime: ServerlessRuntimeContext  # Cognit Serverless Runtime
+    runtime: device_runtime.DeviceRuntime  # Cognit Serverless Runtime
     heating_user_preferences: dict[str, HeatingPreferences]
     ev_departure_plans: EVDeparturePlans
     cycle_time: int
@@ -117,6 +117,7 @@ class UserApp:
         app_log_handler.setFormatter(app_log_formatter)
         self.app_logger = logging.Logger("user_app")
         self.app_logger.addHandler(app_log_handler)
+        app_log_handler.setLevel(logging.ERROR)
 
         if self.use_cognit:
             self.init_cognit_runtime()
@@ -133,36 +134,26 @@ class UserApp:
         )
         handler.setFormatter(formatter)
         self.cognit_logger.addHandler(handler)
+        # handler.setLevel(logging.ERROR)
 
-        sr_conf = ServerlessRuntimeConfig()
-        sr_conf.name = "Smart Energy Meter Serverless Runtime"
-        sr_conf.scheduling_policies = [EnergySchedulingPolicy(50)]
-        sr_conf.faas_flavour = "Energy"
+        self.runtime = device_runtime.DeviceRuntime("cognit.yml")
+        self.runtime.init(REQS_INIT)
 
-        try:
-            self.runtime = ServerlessRuntimeContext(config_path="cognit.yml")
-            self.runtime.create(sr_conf)
-        except Exception as e:
-            self.cognit_logger.error(f"Error in config file content: {e}")
-            sys.exit(1)
-
-        while self.runtime.status != FaaSState.RUNNING:
-            time.sleep(1)
         self.cognit_logger.info("Runtime should be ready now!")
 
     def set_heating_user_preferences(self, room: str, pref: HeatingPreferences):
         self.heating_user_preferences[room] = pref
 
-    def update_slr_preferences(self, green_energy_perc: int):
-        sr_conf = ServerlessRuntimeConfig()
-        sr_conf.name = "Smart Energy Meter Serverless Runtime"
-        sr_conf.scheduling_policies = [EnergySchedulingPolicy(green_energy_perc)]
-        sr_conf.faas_flavour = "Energy"
+    # def update_slr_preferences(self, green_energy_perc: int):
+    #     sr_conf = ServerlessRuntimeConfig()
+    #     sr_conf.name = "Smart Energy Meter Serverless Runtime"
+    #     sr_conf.scheduling_policies = [EnergySchedulingPolicy(green_energy_perc)]
+    #     sr_conf.faas_flavour = "Energy"
 
-        with self.cond:
-            self.runtime.update(sr_conf)
-            time.sleep(12)
-            self.cond.notify_all()
+    #     with self.cond:
+    #         self.runtime.update(sr_conf)
+    #         time.sleep(12)
+    #         self.cond.notify_all()
 
     def offload_now(self):
         with self.cond:
@@ -260,11 +251,11 @@ class UserApp:
         if not self.use_cognit:
             ret = self.decision_algo(*astuple(algo_input))
         else:
-            offload_ctx = self.runtime.call_async(self.decision_algo, *astuple(algo_input))
-            if offload_ctx is not None:
-                res_ctx = self.runtime.wait(offload_ctx.exec_id, self.cognit_timeout)
-                if res_ctx is not None and res_ctx.res is not None:
-                    ret = res_ctx.res.res
+            try:
+                return_code, ret = self.runtime.call(self.decision_algo, *astuple(algo_input))
+            except:
+                self.cognit_logger.error("AAAAAAAA")
+                sys.exit(1)
         return ret
 
     def start(self):
@@ -276,8 +267,6 @@ class UserApp:
         with self.cond:
             self.cond.notify_all()
         self.app_thread.join()
-        if self.use_cognit:
-            self.runtime.delete()
 
     def offload(self):
         now = time.clock_gettime(time.CLOCK_MONOTONIC)
