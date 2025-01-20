@@ -6,6 +6,7 @@ import threading
 from datetime import timedelta
 from typing import Any, Callable, Mapping
 import sys
+import os
 
 from cognit import device_runtime
 
@@ -127,14 +128,23 @@ class UserApp:
     def init_cognit_runtime(self) -> None:
         self.cognit_logger = logging.getLogger("cognit-logger")
         self.cognit_logger.handlers.clear()
-        handler = logging.FileHandler("cognit.log")
+        pid = os.getpid()
+        handler = logging.FileHandler(f"log/{pid}.log")
         formatter = logging.Formatter(
             fmt="[%(asctime)s][%(levelname)s] %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
         )
         handler.setFormatter(formatter)
         self.cognit_logger.addHandler(handler)
-        # handler.setLevel(logging.ERROR)
+
+        self.global_logger = logging.Logger("global-logger")
+        handler = logging.FileHandler("log/cognit.log")
+        formatter = logging.Formatter(
+            fmt="[%(process)d][%(asctime)s] %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+        handler.setFormatter(formatter)
+        self.global_logger.addHandler(handler)
 
         self.runtime = device_runtime.DeviceRuntime("cognit.yml")
         self.runtime.init(REQS_INIT)
@@ -144,16 +154,8 @@ class UserApp:
     def set_heating_user_preferences(self, room: str, pref: HeatingPreferences):
         self.heating_user_preferences[room] = pref
 
-    # def update_slr_preferences(self, green_energy_perc: int):
-    #     sr_conf = ServerlessRuntimeConfig()
-    #     sr_conf.name = "Smart Energy Meter Serverless Runtime"
-    #     sr_conf.scheduling_policies = [EnergySchedulingPolicy(green_energy_perc)]
-    #     sr_conf.faas_flavour = "Energy"
-
-    #     with self.cond:
-    #         self.runtime.update(sr_conf)
-    #         time.sleep(12)
-    #         self.cond.notify_all()
+    def update_slr_preferences(self, green_energy_perc: int):
+        pass
 
     def offload_now(self):
         with self.cond:
@@ -253,9 +255,9 @@ class UserApp:
         else:
             try:
                 return_code, ret = self.runtime.call(self.decision_algo, *astuple(algo_input))
+                self.global_logger.info("OK")
             except:
-                self.cognit_logger.error("AAAAAAAA")
-                sys.exit(1)
+                self.global_logger.error("ERROR")
         return ret
 
     def start(self):
