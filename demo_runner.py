@@ -1,8 +1,15 @@
 import argparse
 import textwrap
 import sys
+import subprocess
+import os
 
 import importlib.util
+
+
+subprocess.call(["mkdir", "-p", "log"])
+subprocess.call(["mkdir", "-p", f"log/{os.getpid()}"])
+
 
 from home_energy_management.decision_algo import run_one_step
 from home_energy_management.device_simulators.device_utils import make_current
@@ -382,6 +389,7 @@ def finish():
 
 
 print("\n\nSTARTING SIMULATION\n\n")
+print(f"PID: {os.getpid()}")
 print(
     80 * "-",
     "\nConfiguration:\n",
