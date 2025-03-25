@@ -1,0 +1,10 @@
+cognit.yml
+cognit.yaml
+
+# logs
+log/*
+
+# python files
+/_venv
+__pycache__
+*.egg-info
