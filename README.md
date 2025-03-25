@@ -30,13 +30,29 @@ Optional arguments:
 
 NOTE: One should always use exactly one of the `--live` and `--scenario` options.
 
+## Running multiple instances of the simulation
+
+Running multiple instances can be used to simulate the scenario in which a vast number of devices tries to communicate with the COGNIT framework.
+
+In the file `runner.py` the following functions are provided:
+
+* `spawn(n: int, offload_cycle: int)` – spawns `n` instances that offloads a function every `offload_cycle` seconds.
+* `status()` – lists all instances PIDs and checks whether some processess terminated
+* `killAll()` – kills all the spawned instances
+
+## Running using `docker`
+
+The `DOCKERFILE` is provided in order to simplify the process of the environment setup.
+
 ## Logging
 
-The demo produces three log files:
+For each instance three log files are produced inside `log/{instance_pid}/` directory:
 
 * `simulation.log` – current state of the devices and the simulation environment
 * `user_app.log` – input and output of the decision algorithm
 * `cognit.log` – Cognit Serverless Runtime device API logs
+
+Additionally in file `log/cognit.log` all the instances register each offload action and whether offloading succedeed.
 
 ## Configuration and scenario
 
