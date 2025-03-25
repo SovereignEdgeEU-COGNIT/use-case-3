@@ -53,6 +53,14 @@ parser.add_argument(
     "--scenario",
     help="provide scenario file",
 )
+parser.add_argument(
+    "--speedup",
+    help="speedup",
+)
+parser.add_argument(
+    "--cycle",
+    help="userapp cycle length",
+)
 cmd_args = parser.parse_args()
 
 if not cmd_args.live and not cmd_args.scenario:
@@ -88,6 +96,14 @@ if cmd_args.scenario is not None:
     HEATING_PREFERENCES = scenario.HEATING_PREFERENCES
     EV_POWER_CONFIG = scenario.EV_POWER_CONFIG
     LOOP = scenario.LOOP
+
+
+if cmd_args.speedup is not None and cmd_args.cycle is not None:
+    speedup = int(cmd_args.speedup)
+    userapp_cycle = int(cmd_args.cycle)
+else:
+    speedup = SPEEDUP
+    userapp_cycle = USER_APP_CYCLE_LENGTH
 
 
 # Initialize the devices
@@ -187,8 +203,8 @@ app = UserApp(
     energy_storage=storage,
     room_heating=room_heating,
     temp_outside_sensor=temp_outside_sensor,
-    speedup=SPEEDUP,
-    cycle=USER_APP_CYCLE_LENGTH,
+    speedup=speedup,
+    cycle=userapp_cycle,
     use_cognit=cmd_args.offload,
     heating_user_preferences={
         "room": heating_preferences,
