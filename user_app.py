@@ -6,6 +6,7 @@ import threading
 from datetime import timedelta
 from typing import Any, Callable, Mapping
 import sys
+import os
 
 from cognit import device_runtime
 
@@ -112,7 +113,7 @@ class UserApp:
         self.shutdown_flag = False
         self.cond = threading.Condition()
 
-        app_log_handler = logging.FileHandler("user_app.log")
+        app_log_handler = logging.FileHandler(f"log/{os.getpid()}/user_app.log")
         app_log_formatter = logging.Formatter("")
         app_log_handler.setFormatter(app_log_formatter)
         self.app_logger = logging.Logger("user_app")
@@ -126,13 +127,22 @@ class UserApp:
     def init_cognit_runtime(self) -> None:
         self.cognit_logger = logging.getLogger("cognit-logger")
         self.cognit_logger.handlers.clear()
-        handler = logging.FileHandler("cognit.log")
+        handler = logging.FileHandler(f"log/{os.getpid()}/cognit.log")
         formatter = logging.Formatter(
             fmt="[%(asctime)s][%(levelname)s] %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
         )
         handler.setFormatter(formatter)
         self.cognit_logger.addHandler(handler)
+
+        self.global_logger = logging.Logger("global-logger")
+        handler = logging.FileHandler("log/cognit.log")
+        formatter = logging.Formatter(
+            fmt="[%(process)d][%(asctime)s] %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+        handler.setFormatter(formatter)
+        self.global_logger.addHandler(handler)
 
         self.runtime = device_runtime.DeviceRuntime("cognit.yml")
         self.runtime.init(REQS_INIT)
@@ -240,8 +250,9 @@ class UserApp:
         else:
             try:
                 return_code, ret = self.runtime.call(self.decision_algo, *astuple(algo_input))
+                self.global_logger.info("Offload OK")
             except:
-                pass
+                self.global_logger.error("Offload ERROR")
         return ret
 
     def start(self):
