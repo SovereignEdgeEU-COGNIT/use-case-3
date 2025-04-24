@@ -18,11 +18,6 @@ from home_energy_management.device_simulators.heating import HeatingPreferences
 from home_energy_management.device_simulators.electric_vehicle import EVDeparturePlans
 
 
-REQS_INIT = {
-      "FLAVOUR": "EnergyV2__16GB_4CPU",
-      "MIN_ENERGY_RENEWABLE_USAGE": 50,
-}
-
 @dataclass
 class AlgoPredictParams:
     timestamp: float
@@ -122,7 +117,7 @@ class UserApp:
     shutdown_flag: bool
     app_thread: threading.Thread
     use_cognit: bool
-    cognit_timeout: int
+    use_model: bool
     start_time: float
     cond: threading.Condition
     app_logger: logging.Logger
@@ -148,10 +143,7 @@ class UserApp:
             start_date: datetime,
             metrology: metersim.Metersim,
             decision_algo: Callable,
-            training_algo: Callable,
-            model_path: str,
             model_parameters: dict[str, float],
-            train_parameters: dict[str, Any],
             pv: DeviceUserApi,
             energy_storage: DeviceUserApi,
             electric_vehicle: DeviceUserApi,
@@ -169,27 +161,32 @@ class UserApp:
             temp_outside_series: TimeSeries,
             temp_outside_pred_series: TimeSeries,
             use_cognit: bool = True,
-            cognit_timeout: int = 3,
+            reqs_init: dict[str, Any] = None,
+            use_model: bool = True,
+            training_algo: Callable = None,
+            model_path: str = None,
+            train_parameters: dict[str, Any] = None,
     ) -> None:
         self.start_date = start_date
         self.metrology = metrology
         self.decision_algo = decision_algo
-        self.training_algo = training_algo
-        self.model_path = model_path
         self.model_parameters = model_parameters
-        self.train_parameters = train_parameters
         self.pv = pv
         self.energy_storage = energy_storage
         self.electric_vehicle = electric_vehicle
         self.room_heating = room_heating
         self.temp_outside_sensor = temp_outside_sensor
-        self.use_cognit = use_cognit
-        self.cognit_timeout = cognit_timeout
         self.speedup = speedup
         self.cycle_time = cycle
         self.num_cycles_retrain = num_cycles_retrain
         self.heating_user_preferences = heating_user_preferences
         self.ev_departure_plans = ev_departure_plans
+        self.use_cognit = use_cognit
+
+        self.use_model = use_model
+        self.training_algo = training_algo
+        self.model_path = model_path
+        self.train_parameters = train_parameters
 
         self.pv_production_series = pv_production_series
         self.pv_production_pred_series = pv_production_pred_series
@@ -209,11 +206,11 @@ class UserApp:
         app_log_handler.setLevel(logging.INFO)
 
         if self.use_cognit:
-            self.init_cognit_runtime()
+            self.init_cognit_runtime(reqs_init)
 
         self.app_thread = threading.Thread(target=self.app_loop)
 
-    def init_cognit_runtime(self) -> None:
+    def init_cognit_runtime(self, reqs_init: dict[str, Any]) -> None:
         self.cognit_logger = logging.getLogger("cognit-logger")
         self.cognit_logger.handlers.clear()
         pid = os.getpid()
@@ -235,7 +232,7 @@ class UserApp:
         self.global_logger.addHandler(handler)
 
         self.runtime = device_runtime.DeviceRuntime("cognit.yml")
-        self.runtime.init(REQS_INIT)
+        self.runtime.init(reqs_init)
 
         self.cognit_logger.info("Runtime should be ready now!")
 
@@ -284,8 +281,11 @@ class UserApp:
         self.last_storage_charge_level = storage_parameters["curr_charge_level"]
         self.last_ev_battery_charge_level = ev_parameters["curr_charge_level"]
 
-        with open(self.model_path, mode='rb') as file:
-            bytes_with_model = file.read()
+        if self.use_model:
+            with open(self.model_path, mode='rb') as file:
+                bytes_with_model = file.read()
+        else:
+            bytes_with_model = None
 
         algo_input = AlgoPredictParams(
             next_timestamp.timestamp(),
@@ -294,9 +294,9 @@ class UserApp:
             storage_parameters,
             ev_parameters,
             room_heating_params_list,
-            energy_pv_produced_pred,
-            uncontrolled_consumption_pred,
-            temp_outside_pred,
+            float(energy_pv_produced_pred),
+            float(uncontrolled_consumption_pred),
+            float(temp_outside_pred),
             self.cycle_time
         )
         return algo_input
@@ -475,7 +475,7 @@ class UserApp:
                     self.cond.wait(sleep_time)
                     slept = True
 
-                if counter % self.num_cycles_retrain == 0:
+                if self.use_model and counter % self.num_cycles_retrain == 0:
                     old_speedup = self.speedup
                     self.set_speedup(1)
                     self.metrology.set_speedup(1)

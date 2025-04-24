@@ -5,7 +5,8 @@ import sys
 import importlib.util
 from datetime import datetime
 
-from home_energy_management.ppo_algorithm import make_decision, training_function
+from home_energy_management.baseline_algorithm import make_decision as baseline_decision_function
+from home_energy_management.ppo_algorithm import make_decision as ai_decision_function, training_function
 from home_energy_management.device_simulators.device_utils import make_current
 from home_energy_management.device_simulators.electric_vehicle import (
     ElectricVehicle,
@@ -30,6 +31,8 @@ from scenario.config import (
     SPEEDUP,
     USER_APP_CYCLE_LENGTH,
     NUM_CYCLES_RETRAIN,
+    ALGORITHM_VERSION,
+    REQS_INIT,
     MODEL_PARAMETERS,
     TRAIN_PARAMETERS,
     STORAGE_CONFIG,
@@ -61,6 +64,10 @@ parser.add_argument(
 parser.add_argument(
     "--scenario",
     help="provide scenario file",
+)
+parser.add_argument(
+    "--algorithm_version",
+    help="version of decision algorithm; available options are: {\"baseline\", \"AI\"}",
 )
 parser.add_argument(
     "--speedup",
@@ -112,13 +119,28 @@ if cmd_args.scenario is not None:
     LOOP = scenario.LOOP
 
 
+if cmd_args.algorithm_version is not None:
+    if cmd_args.algorithm_version not in ["baseline", "AI"]:
+        print(
+            "\nError when parsing arguments",
+            "\nAvailable options for algorithm_version are: {\"baseline\", \"AI\"}",
+        )
+        parser.print_help()
+        sys.exit(1)
+    algorithm_version = cmd_args.algorithm_version
+else:
+    algorithm_version = ALGORITHM_VERSION
+
 if cmd_args.speedup is not None and cmd_args.cycle is not None:
     speedup = int(cmd_args.speedup)
     userapp_cycle = int(cmd_args.cycle)
-    num_cycles_retrain = int(cmd_args.num_cycles_retrain)
 else:
     speedup = SPEEDUP
     userapp_cycle = USER_APP_CYCLE_LENGTH
+
+if cmd_args.num_cycles_retrain is not None:
+    num_cycles_retrain = int(cmd_args.num_cycles_retrain)
+else:
     num_cycles_retrain = NUM_CYCLES_RETRAIN
 
 
@@ -214,11 +236,12 @@ print("Initializing User Application")
 app = UserApp(
     start_date=start_date,
     metrology=simulation.sem,
-    decision_algo=make_decision,
-    training_algo=training_function,
-    model_path=TRAINED_MODEL_PATH,
+    decision_algo=baseline_decision_function if algorithm_version == "baseline" else ai_decision_function,
     model_parameters=MODEL_PARAMETERS,
-    train_parameters=TRAIN_PARAMETERS,
+    use_model=algorithm_version == "AI",
+    training_algo=training_function if algorithm_version == "AI" else None,
+    model_path=TRAINED_MODEL_PATH if algorithm_version == "AI" else None,
+    train_parameters=TRAIN_PARAMETERS if algorithm_version == "AI" else None,
     pv=pv,
     electric_vehicle=electric_vehicle,
     energy_storage=storage,
@@ -228,6 +251,7 @@ app = UserApp(
     cycle=userapp_cycle,
     num_cycles_retrain=num_cycles_retrain,
     use_cognit=cmd_args.offload,
+    reqs_init=REQS_INIT[algorithm_version],
     heating_user_preferences={
         "room": heating_preferences,
     },

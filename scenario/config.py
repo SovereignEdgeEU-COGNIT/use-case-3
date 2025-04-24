@@ -1,6 +1,20 @@
 SPEEDUP = 360  # (s)
 USER_APP_CYCLE_LENGTH = 3600  # (s)
 NUM_CYCLES_RETRAIN = 24
+ALGORITHM_VERSION = "AI"
+
+REQS_INIT = {
+    "baseline":
+        {
+            "FLAVOUR": "EnergyV2",
+            "MIN_ENERGY_RENEWABLE_USAGE": 50,
+        },
+    "AI":
+        {
+            "FLAVOUR": "EnergyV2__16GB_4CPU",
+            "MIN_ENERGY_RENEWABLE_USAGE": 50,
+        },
+}
 
 
 STORAGE_CONFIG = {
