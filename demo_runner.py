@@ -1,9 +1,16 @@
 import argparse
 import textwrap
 import sys
+import subprocess
+import os
 
 import importlib.util
 from datetime import datetime
+
+
+subprocess.call(["mkdir", "-p", "log"])
+subprocess.call(["mkdir", "-p", f"log/{os.getpid()}"])
+
 
 from home_energy_management.baseline_algorithm import make_decision as baseline_decision_function
 from home_energy_management.ppo_algorithm import make_decision as ai_decision_function, training_function
@@ -81,6 +88,7 @@ parser.add_argument(
     "--num_cycles_retrain",
     help="userapp number of cycles after which to retrain decision model",
 )
+
 cmd_args = parser.parse_args()
 
 if not cmd_args.live and not cmd_args.scenario:
@@ -434,6 +442,7 @@ def finish():
 
 
 print("\n\nSTARTING SIMULATION\n\n")
+print(f"PID: {os.getpid()}")
 print(
     80 * "-",
     "\nConfiguration:\n",

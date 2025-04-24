@@ -3,6 +3,7 @@ from pathlib import Path
 import threading
 import time
 import logging
+import os
 
 import phoenixsystems.sem.metersim as metersim
 from home_energy_management.device_simulators.electric_vehicle import ElectricVehicle
@@ -12,7 +13,7 @@ from home_energy_management.device_simulators.gateway import Gateway
 from home_energy_management.device_simulators.photovoltaic import AbstractPV
 from home_energy_management.device_simulators.simple_device import SimpleDevice
 
-log_handler = logging.FileHandler("simulation.log")
+log_handler = logging.FileHandler(f"log/{os.getpid()}/simulation.log")
 formatter = logging.Formatter("")
 log_handler.setFormatter(formatter)
 logger = logging.Logger("simulation")

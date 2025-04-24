@@ -1,5 +1,4 @@
 import subprocess
-import time
 
 
 COMMAND = ["python3.10", "demo_runner.py", "--offload", "--scenario", "scenario/scenario_autumn.py"]
@@ -20,6 +19,16 @@ def spawn(n, offload_cycle=None):
     for _ in range(n):
         proc = subprocess.Popen(COMMAND, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         processes.append(proc)
+        print(f"Proc {proc.pid} created")
+
+
+def status():
+    for p in processes:
+        ret = p.poll()
+        if ret is None:
+            print(f"Proc {p.pid} running")
+        else:
+            print(f"Proc {p.pid} returned {ret}")
 
 
 def killAll():

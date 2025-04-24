@@ -18,6 +18,11 @@ from home_energy_management.device_simulators.heating import HeatingPreferences
 from home_energy_management.device_simulators.electric_vehicle import EVDeparturePlans
 
 
+REQS_INIT = {
+      "FLAVOUR": "EnergyV2",
+      "MIN_ENERGY_RENEWABLE_USAGE": 50,
+}
+
 @dataclass
 class AlgoPredictParams:
     timestamp: float
@@ -198,7 +203,7 @@ class UserApp:
         self.shutdown_flag = False
         self.cond = threading.Condition()
 
-        app_log_handler = logging.FileHandler("user_app.log")
+        app_log_handler = logging.FileHandler(f"log/{os.getpid()}/user_app.log")
         app_log_formatter = logging.Formatter("")
         app_log_handler.setFormatter(app_log_formatter)
         self.app_logger = logging.Logger("user_app")
@@ -213,8 +218,7 @@ class UserApp:
     def init_cognit_runtime(self, reqs_init: dict[str, Any]) -> None:
         self.cognit_logger = logging.getLogger("cognit-logger")
         self.cognit_logger.handlers.clear()
-        pid = os.getpid()
-        handler = logging.FileHandler(f"log/{pid}.log")
+        handler = logging.FileHandler(f"log/{os.getpid()}/cognit.log")
         formatter = logging.Formatter(
             fmt="[%(asctime)s][%(levelname)s] %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
@@ -238,9 +242,6 @@ class UserApp:
 
     def set_heating_user_preferences(self, room: str, pref: HeatingPreferences):
         self.heating_user_preferences[room] = pref
-
-    def update_slr_preferences(self, green_energy_perc: int):
-        pass
 
     def offload_now(self):
         with self.cond:
@@ -354,9 +355,9 @@ class UserApp:
         else:
             try:
                 return_code, ret = self.runtime.call(algo_function, *astuple(algo_input))
-                self.global_logger.info("OK")
+                self.global_logger.info("Offload OK")
             except:
-                self.global_logger.error("ERROR")
+                self.global_logger.error("Offload ERROR")
         return ret
 
     def start(self):
