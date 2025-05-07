@@ -3,6 +3,7 @@ USER_APP_CYCLE_LENGTH = 3600  # (s)
 NUM_CYCLES_RETRAIN = 24
 ALGORITHM_VERSION = "AI"
 
+
 REQS_INIT = {
     "baseline":
         {
@@ -11,7 +12,7 @@ REQS_INIT = {
         },
     "AI":
         {
-            "FLAVOUR": "EnergyV2__16GB_4CPU",
+            "FLAVOUR": "EnergyV2__Service_persistent",
             "MIN_ENERGY_RENEWABLE_USAGE": 50,
         },
 }
@@ -81,13 +82,13 @@ MODEL_PARAMETERS = {
 }
 
 
-TRAINED_MODEL_PATH = 'models/cognit_model_scripted.pt'
 PV_PRODUCTION_REAL_PATH = 'data/pv_production.csv'
 UNCONTROLLED_CONSUMPTION_REAL_PATH = 'data/uncontrolled_consumption.csv'
 TEMP_OUTSIDE_REAL_PATH = 'data/temp_outside.csv'
 PV_PRODUCTION_PRED_PATH = 'data/pv_production_pred.csv'
 UNCONTROLLED_CONSUMPTION_PRED_PATH = 'data/uncontrolled_consumption_pred.csv'
 TEMP_OUTSIDE_PRED_PATH = 'data/temp_outside_pred.csv'
+
 
 TRAIN_PARAMETERS = {
     "data_timedelta_days": 90,
@@ -108,4 +109,11 @@ TRAIN_PARAMETERS = {
     "temp_reward_coeff": 2.0,
     "storage_reward_coeff": 0.8,
     "ev_reward_coeff": 0.8,
+}
+
+
+S3_PARAMETERS = {
+    "endpoint_url": "https://s3.sovereignedge.eu/",
+    "bucket_name": "uc3-test-bucket",
+    "model_filename": "files/onnx_model_from_cognit.onnx",
 }

@@ -10,7 +10,6 @@ from typing import Any, Callable, Mapping
 import numpy as np
 import pandas as pd
 import phoenixsystems.sem.metersim as metersim
-import torch
 from cognit import device_runtime
 
 from home_energy_management.device_simulators.device_utils import DeviceUserApi
@@ -26,7 +25,7 @@ REQS_INIT = {
 @dataclass
 class AlgoPredictParams:
     timestamp: float
-    trained_model: bytes
+    s3_parameters: dict[str, str]
     home_model_parameters: dict[str, float]
     storage_parameters: dict[str, float]
     ev_battery_parameters: dict[str, float]
@@ -39,6 +38,7 @@ class AlgoPredictParams:
 @dataclass
 class AlgoTrainParams:
     train_parameters: dict[str, Any]
+    s3_parameters: dict[str, str]
     home_model_parameters: dict[str, float]
     storage_parameters: dict[str, float]
     ev_battery_parameters: dict[str, float]
@@ -105,7 +105,7 @@ class UserApp:
     num_cycles_retrain: int
     model_parameters: dict[str, float]
     train_parameters: dict[str, Any]
-    model_path: str
+    s3_parameters: dict[str, str]
 
     # Offloaded functions
     training_algo: Callable
@@ -169,7 +169,7 @@ class UserApp:
             reqs_init: dict[str, Any] = None,
             use_model: bool = True,
             training_algo: Callable = None,
-            model_path: str = None,
+            s3_parameters: dict[str, str] = None,
             train_parameters: dict[str, Any] = None,
     ) -> None:
         self.start_date = start_date
@@ -190,7 +190,7 @@ class UserApp:
 
         self.use_model = use_model
         self.training_algo = training_algo
-        self.model_path = model_path
+        self.s3_parameters = s3_parameters
         self.train_parameters = train_parameters
 
         self.pv_production_series = pv_production_series
@@ -282,15 +282,9 @@ class UserApp:
         self.last_storage_charge_level = storage_parameters["curr_charge_level"]
         self.last_ev_battery_charge_level = ev_parameters["curr_charge_level"]
 
-        if self.use_model:
-            with open(self.model_path, mode='rb') as file:
-                bytes_with_model = file.read()
-        else:
-            bytes_with_model = None
-
         algo_input = AlgoPredictParams(
             next_timestamp.timestamp(),
-            bytes_with_model,
+            self.s3_parameters,
             self.model_parameters,
             storage_parameters,
             ev_parameters,
@@ -317,6 +311,7 @@ class UserApp:
 
         algo_input = AlgoTrainParams(
             self.train_parameters,
+            self.s3_parameters,
             self.model_parameters,
             self.energy_storage.get_info(),
             self.electric_vehicle.get_info(),
@@ -444,12 +439,10 @@ class UserApp:
         start_time = time.time()
         algo_res = self.run_algo(self.training_algo, algo_input)
         end_time = time.time()
-        self.app_logger.info(f"\nTraining completed in: {(end_time - start_time):.2f} seconds")
 
         if algo_res is not None:
-            model_scripted = torch.jit.script(algo_res)
-            model_scripted.save(self.model_path)
-            self.app_logger.info(f"Model saved in {self.model_path}")
+            self.app_logger.info(f"\nTraining completed in: {(end_time - start_time):.2f} seconds")
+            self.app_logger.info(f"Model saved in s3 bucket")
         else:
             self.app_logger.warning("Training decision model call failed")
 
