@@ -12,7 +12,7 @@ REQS_INIT = {
         },
     "AI":
         {
-            "FLAVOUR": "EnergyV2__Service_persistent",
+            "FLAVOUR": "EnergyV2__16GB_4CPU_torch_onnx",
             "MIN_ENERGY_RENEWABLE_USAGE": 50,
         },
 }
