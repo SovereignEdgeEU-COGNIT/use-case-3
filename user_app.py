@@ -8,7 +8,6 @@ from datetime import datetime, timedelta
 from typing import Any, Callable, Mapping
 
 import numpy as np
-import pandas as pd
 import phoenixsystems.sem.metersim as metersim
 from cognit import device_runtime
 
@@ -26,73 +25,24 @@ REQS_INIT = {
 class AlgoPredictParams:
     timestamp: float
     s3_parameters: dict[str, str]
+    besmart_parameters: dict[str, Any]
     home_model_parameters: dict[str, float]
     storage_parameters: dict[str, float]
     ev_battery_parameters: dict[str, float]
     heating_parameters_per_room: list[dict[str, Any]]
-    energy_pv_produced_pred: float
-    uncontrolled_energy_consumption_pred: float
-    temp_outside_pred: float
     cycle_timedelta_s: int
 
 @dataclass
 class AlgoTrainParams:
     train_parameters: dict[str, Any]
     s3_parameters: dict[str, str]
+    besmart_parameters: dict[str, Any]
     home_model_parameters: dict[str, float]
     storage_parameters: dict[str, float]
     ev_battery_parameters: dict[str, float]
     heating_parameters: dict[str, Any]
     cycle_timedelta_s: int
-    timestamps_hour: np.ndarray[int]
-    pv_generation_train: np.ndarray[float]
-    pv_generation_pred_train: np.ndarray[float]
-    uncontrolled_consumption_train: np.ndarray[float]
-    uncontrolled_consumption_pred_train: np.ndarray[float]
-    temp_outside_train: np.ndarray[float]
-    temp_outside_pred_train: np.ndarray[float]
 
-@dataclass
-class TimeSeries:
-    time: np.ndarray[int]
-    value: np.ndarray[float]
-
-    @staticmethod
-    def from_csv(path_to_csv) -> 'TimeSeries':
-        df = pd.read_csv(path_to_csv)
-        return TimeSeries(df['unix_timestamp'].values,
-                          df['value'].values)
-
-    def get_value_by_timestamp(self, timestamp: datetime) -> float:
-        timestamp = self.__timestamp_hour_rounder(timestamp)
-        try:
-            index = np.where(self.time == timestamp.timestamp())[0][0]
-            return self.value[index]
-        except IndexError:
-            return np.nan
-
-    def get_values_between_timestamps(self,
-                                      start_timestamp: datetime,
-                                      end_timestamp: datetime) -> np.ndarray[float]:
-        start_timestamp = self.__timestamp_hour_rounder(start_timestamp)
-        end_timestamp = self.__timestamp_hour_rounder(end_timestamp)
-        indexes = np.where(np.logical_and(self.time >= start_timestamp.timestamp(),
-                                          self.time < end_timestamp.timestamp()))[0]
-        return self.value[indexes]
-
-    def get_times_between_timestamps(self,
-                                     start_timestamp: datetime,
-                                     end_timestamp: datetime) -> np.ndarray[int]:
-        start_timestamp = self.__timestamp_hour_rounder(start_timestamp)
-        end_timestamp = self.__timestamp_hour_rounder(end_timestamp)
-        indexes = np.where(np.logical_and(self.time >= start_timestamp.timestamp(),
-                                          self.time < end_timestamp.timestamp()))[0]
-        return self.time[indexes]
-
-    @staticmethod
-    def __timestamp_hour_rounder(t: datetime) -> datetime:
-        # Rounds to nearest hour by adding a timedelta hour if minute >= 30
-        return t.replace(second=0, microsecond=0, minute=0, hour=t.hour) + timedelta(hours=t.minute // 30)
 
 class UserApp:
     start_date: datetime
@@ -106,6 +56,7 @@ class UserApp:
     model_parameters: dict[str, float]
     train_parameters: dict[str, Any]
     s3_parameters: dict[str, str]
+    besmart_parameters: dict[str, Any]
 
     # Offloaded functions
     training_algo: Callable
@@ -136,13 +87,6 @@ class UserApp:
     last_storage_charge_level: float = 0.0
     last_ev_battery_charge_level: float = 0.0
 
-    # Time series
-    pv_production_series: TimeSeries = TimeSeries(np.array([]), np.array([]))
-    pv_production_pred_series: TimeSeries = TimeSeries(np.array([]), np.array([]))
-    consumption_pred_series: TimeSeries = TimeSeries(np.array([]), np.array([]))
-    temp_outside_series: TimeSeries = TimeSeries(np.array([]), np.array([]))
-    temp_outside_pred_series: TimeSeries = TimeSeries(np.array([]), np.array([]))
-
     def __init__(
             self,
             start_date: datetime,
@@ -159,12 +103,7 @@ class UserApp:
             num_cycles_retrain: int,
             heating_user_preferences: dict[str, HeatingPreferences],
             ev_departure_plans: EVDeparturePlans,
-            pv_production_series: TimeSeries,
-            pv_production_pred_series: TimeSeries,
-            consumption_series: TimeSeries,
-            consumption_pred_series: TimeSeries,
-            temp_outside_series: TimeSeries,
-            temp_outside_pred_series: TimeSeries,
+            besmart_parameters: dict[str, Any],
             use_cognit: bool = True,
             reqs_init: dict[str, Any] = None,
             use_model: bool = True,
@@ -187,18 +126,12 @@ class UserApp:
         self.heating_user_preferences = heating_user_preferences
         self.ev_departure_plans = ev_departure_plans
         self.use_cognit = use_cognit
+        self.besmart_parameters = besmart_parameters
 
         self.use_model = use_model
         self.training_algo = training_algo
         self.s3_parameters = s3_parameters
         self.train_parameters = train_parameters
-
-        self.pv_production_series = pv_production_series
-        self.pv_production_pred_series = pv_production_pred_series
-        self.consumption_series = consumption_series
-        self.consumption_pred_series = consumption_pred_series
-        self.temp_outside_series = temp_outside_series
-        self.temp_outside_pred_series = temp_outside_pred_series
 
         self.shutdown_flag = False
         self.cond = threading.Condition()
@@ -271,10 +204,6 @@ class UserApp:
             params["preferred_temp"] = value.get_temp()
             room_heating_params_list.append(params)
 
-        uncontrolled_consumption_pred = self.consumption_pred_series.get_value_by_timestamp(next_timestamp)
-        energy_pv_produced_pred = self.pv_production_pred_series.get_value_by_timestamp(next_timestamp)
-        temp_outside_pred = self.temp_outside_pred_series.get_value_by_timestamp(next_timestamp)
-
         energy = self.metrology.get_energy_total()
         self.last_active_plus = energy.active_plus
         self.last_active_minus = energy.active_minus
@@ -285,13 +214,11 @@ class UserApp:
         algo_input = AlgoPredictParams(
             next_timestamp.timestamp(),
             self.s3_parameters,
+            self.besmart_parameters,
             self.model_parameters,
             storage_parameters,
             ev_parameters,
             room_heating_params_list,
-            float(energy_pv_produced_pred),
-            float(uncontrolled_consumption_pred),
-            float(temp_outside_pred),
             self.cycle_time
         )
         return algo_input
@@ -300,9 +227,8 @@ class UserApp:
         self.last_algo_run = now
         last_timestamp = self.start_date + timedelta(seconds=self.metrology.get_uptime() - self.cycle_time)
         first_timestamp = last_timestamp - timedelta(days=self.train_parameters["data_timedelta_days"])
-        timestamps = self.pv_production_series.get_times_between_timestamps(first_timestamp, last_timestamp)
-        get_hour = lambda x: datetime.fromtimestamp(x).hour
-        timestamp_hours = np.vectorize(get_hour)(timestamps)
+        self.besmart_parameters["since"] = first_timestamp
+        self.besmart_parameters["till"] = last_timestamp
 
         room_heating_params_list = []
         for room, value in self.heating_user_preferences.items():
@@ -312,18 +238,12 @@ class UserApp:
         algo_input = AlgoTrainParams(
             self.train_parameters,
             self.s3_parameters,
+            self.besmart_parameters,
             self.model_parameters,
             self.energy_storage.get_info(),
             self.electric_vehicle.get_info(),
             room_heating_params_list[0],
             self.cycle_time,
-            timestamp_hours,
-            self.pv_production_series.get_values_between_timestamps(first_timestamp, last_timestamp),
-            self.pv_production_pred_series.get_values_between_timestamps(first_timestamp, last_timestamp),
-            self.consumption_series.get_values_between_timestamps(first_timestamp, last_timestamp),
-            self.consumption_pred_series.get_values_between_timestamps(first_timestamp, last_timestamp),
-            self.temp_outside_series.get_values_between_timestamps(first_timestamp, last_timestamp),
-            self.temp_outside_pred_series.get_values_between_timestamps(first_timestamp, last_timestamp),
         )
         return algo_input
 
@@ -399,19 +319,11 @@ class UserApp:
             f"\n\t- nominal power (kW): {ev_battery_parameters['nominal_power']}, "
             f"\n\t- efficiency: {ev_battery_parameters['efficiency']}."
         )
-        self.app_logger.info(
-            f"Prediction of uncontrolled energy consumption (kWh): "
-            f"{round(algo_input.uncontrolled_energy_consumption_pred, 2)}"
-        )
-        self.app_logger.info(
-            f"Prediction of energy PV production (kWh): {round(algo_input.energy_pv_produced_pred, 2)}"
-        )
         temperature_inside = np.mean(np.array([room["curr_temp"] for room in algo_input.heating_parameters_per_room]))
         preferred_temperature = np.mean(np.array([room["preferred_temp"]
                                                   for room in algo_input.heating_parameters_per_room]))
         self.app_logger.info(f"Inside temperature (°C): {round(temperature_inside, 2)}")
         self.app_logger.info(f"Preferred temperature (°C): {round(preferred_temperature, 2)}")
-        self.app_logger.info(f"Prediction of outside temperature (°C): {algo_input.temp_outside_pred}")
         self.app_logger.info(f"Current storage SOC (%): {round(storage_parameters['curr_charge_level'], 2)}")
         self.app_logger.info(f"Current EV battery SOC (%): {round(ev_battery_parameters['curr_charge_level'], 2)}")
 

@@ -12,7 +12,7 @@ REQS_INIT = {
         },
     "AI":
         {
-            "FLAVOUR": "EnergyV2__16GB_4CPU_torch_onnx",
+            "FLAVOUR": "EnergyV2__16GB_1CPU",
             "MIN_ENERGY_RENEWABLE_USAGE": 50,
         },
 }
@@ -51,7 +51,7 @@ HEATING_CONFIG = {
 
 
 INITIAL_STATE = {
-    "start_date": "2024-03-21",  # YYYY-MM-DD
+    "start_date": "2023-03-21",  # YYYY-MM-DD
     "curr_room_temp": 19.0,  # (°C)
     "live_temp_outside": 15.0,  # (°C)
     "heating_preferences": 20.0,  # (°C)
@@ -72,11 +72,11 @@ MODEL_PARAMETERS = {
     "min_temp_setting": 17.,
     "max_temp_setting": 24.,
     "ev_driving_schedule": {
-        "hour": [0., 8., 15., 20., 22.],
+        "time": ["0:00", "8:00", "15:00", "20:00", "22:00"],
         "driving_power": [0., 5., 0., 8., 0.],
     },
     "pref_temp_schedule": {
-        "hour": [0., 7., 9., 17., 23.],
+        "time": ["0:00", "7:00", "9:00", "17:00", "23:00"],
         "temp": [18., 20, 18., 21., 19.],
     },
 }
@@ -116,4 +116,21 @@ S3_PARAMETERS = {
     "endpoint_url": "https://s3.sovereignedge.eu/",
     "bucket_name": "uc3-test-bucket",
     "model_filename": "files/onnx_model_from_cognit.onnx",
+}
+
+BESMART_PARAMETERS = {
+    "workspace_key": "wubbalubbadubdub",
+    "login": "cognit_demo",
+    "password": "CognitDemo2025!",
+    "pv_generation": {
+        "cid": 68,
+        "mid": 84,
+        "moid": 70,
+    },
+    "energy_consumption": {
+        "cid": 68,
+        "mid": 83,
+        "moid": 32,
+    },
+    "temperature_moid": 139,
 }

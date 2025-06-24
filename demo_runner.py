@@ -42,18 +42,13 @@ from scenario.config import (
     MODEL_PARAMETERS,
     TRAIN_PARAMETERS,
     S3_PARAMETERS,
+    BESMART_PARAMETERS,
     STORAGE_CONFIG,
     EV_CONFIG,
     HEATING_CONFIG,
     INITIAL_STATE,
-    PV_PRODUCTION_REAL_PATH,
-    PV_PRODUCTION_PRED_PATH,
-    UNCONTROLLED_CONSUMPTION_REAL_PATH,
-    UNCONTROLLED_CONSUMPTION_PRED_PATH,
-    TEMP_OUTSIDE_REAL_PATH,
-    TEMP_OUTSIDE_PRED_PATH,
 )
-from user_app import UserApp, TimeSeries
+from user_app import UserApp
 
 # Parse the arguments
 parser = argparse.ArgumentParser()
@@ -245,6 +240,7 @@ app = UserApp(
     metrology=simulation.sem,
     decision_algo=baseline_decision_function if algorithm_version == "baseline" else ai_decision_function,
     model_parameters=MODEL_PARAMETERS,
+    besmart_parameters=BESMART_PARAMETERS,
     use_model=algorithm_version == "AI",
     training_algo=training_function if algorithm_version == "AI" else None,
     s3_parameters=S3_PARAMETERS if algorithm_version == "AI" else None,
@@ -263,12 +259,6 @@ app = UserApp(
         "room": heating_preferences,
     },
     ev_departure_plans=ev_departure_plans,
-    pv_production_series=TimeSeries.from_csv(PV_PRODUCTION_REAL_PATH),
-    pv_production_pred_series=TimeSeries.from_csv(PV_PRODUCTION_PRED_PATH),
-    consumption_series=TimeSeries.from_csv(UNCONTROLLED_CONSUMPTION_REAL_PATH),
-    consumption_pred_series=TimeSeries.from_csv(UNCONTROLLED_CONSUMPTION_PRED_PATH),
-    temp_outside_series=TimeSeries.from_csv(TEMP_OUTSIDE_REAL_PATH),
-    temp_outside_pred_series=TimeSeries.from_csv(TEMP_OUTSIDE_PRED_PATH),
 )
 
 
