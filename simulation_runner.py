@@ -164,4 +164,4 @@ class SimulationRunner:
             self.log(now)
 
             sec += 1
-            time.sleep(sec + start - time.time())
+            time.sleep(max(sec + start - time.time(), 0.01))
