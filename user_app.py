@@ -24,23 +24,23 @@ REQS_INIT = {
 @dataclass
 class AlgoPredictParams:
     timestamp: float
-    s3_parameters: dict[str, str]
-    besmart_parameters: dict[str, Any]
-    home_model_parameters: dict[str, float]
-    storage_parameters: dict[str, float]
-    ev_battery_parameters: dict[str, float]
-    heating_parameters_per_room: list[dict[str, Any]]
+    s3_parameters: str
+    besmart_parameters: str
+    home_model_parameters: str
+    storage_parameters: str
+    ev_battery_parameters: str
+    heating_parameters_per_room: str
     cycle_timedelta_s: int
 
 @dataclass
 class AlgoTrainParams:
-    train_parameters: dict[str, Any]
-    s3_parameters: dict[str, str]
-    besmart_parameters: dict[str, Any]
-    home_model_parameters: dict[str, float]
-    storage_parameters: dict[str, float]
-    ev_battery_parameters: dict[str, float]
-    heating_parameters: dict[str, Any]
+    train_parameters: str
+    s3_parameters: str
+    besmart_parameters: str
+    home_model_parameters: str
+    storage_parameters: str
+    ev_battery_parameters: str
+    heating_parameters: str
     cycle_timedelta_s: int
 
 
@@ -213,12 +213,12 @@ class UserApp:
 
         algo_input = AlgoPredictParams(
             next_timestamp.timestamp(),
-            self.s3_parameters,
-            self.besmart_parameters,
-            self.model_parameters,
-            storage_parameters,
-            ev_parameters,
-            room_heating_params_list,
+            json.dumps(self.s3_parameters),
+            json.dumps(self.besmart_parameters),
+            json.dumps(self.model_parameters),
+            json.dumps(storage_parameters),
+            json.dumps(ev_parameters),
+            json.dumps(room_heating_params_list),
             self.cycle_time
         )
         return algo_input
@@ -227,8 +227,8 @@ class UserApp:
         self.last_algo_run = now
         last_timestamp = self.start_date + timedelta(seconds=self.metrology.get_uptime() - self.cycle_time)
         first_timestamp = last_timestamp - timedelta(days=self.train_parameters["data_timedelta_days"])
-        self.besmart_parameters["since"] = first_timestamp
-        self.besmart_parameters["till"] = last_timestamp
+        self.besmart_parameters["since"] = first_timestamp.timestamp()
+        self.besmart_parameters["till"] = last_timestamp.timestamp()
 
         room_heating_params_list = []
         for room, value in self.heating_user_preferences.items():
@@ -236,26 +236,27 @@ class UserApp:
             room_heating_params_list.append(params)
 
         algo_input = AlgoTrainParams(
-            self.train_parameters,
-            self.s3_parameters,
-            self.besmart_parameters,
-            self.model_parameters,
-            self.energy_storage.get_info(),
-            self.electric_vehicle.get_info(),
-            room_heating_params_list[0],
+            json.dumps(self.train_parameters),
+            json.dumps(self.s3_parameters),
+            json.dumps(self.besmart_parameters),
+            json.dumps(self.model_parameters),
+            json.dumps(self.energy_storage.get_info()),
+            json.dumps(self.electric_vehicle.get_info()),
+            json.dumps(room_heating_params_list[0]),
             self.cycle_time,
         )
         return algo_input
 
-    def execute_algo_response(self, algo_res: Any):
+    def execute_algo_response(self, algo_res: str):
         (
             conf_temp_per_room,
             storage_params,
             ev_params,
             *_
         ) = algo_res
-        self.energy_storage.set_params(storage_params)
-        self.electric_vehicle.set_params(ev_params)
+        self.energy_storage.set_params(json.loads(storage_params))
+        self.electric_vehicle.set_params(json.loads(ev_params))
+        conf_temp_per_room = json.loads(conf_temp_per_room)
         for key, value in self.room_heating.items():
             value.set_params(
                 {
@@ -293,7 +294,7 @@ class UserApp:
         self.app_logger.info("\n\x1B[2J\x1B[H")
         self.app_logger.info(f"{self.start_date + timedelta(seconds=self.metrology.get_uptime())}")
         self.app_logger.info("\n\tINPUT")
-        model_parameters = algo_input.home_model_parameters
+        model_parameters = json.loads(algo_input.home_model_parameters)
         self.app_logger.info(
             f"Model parameters: \n\t- heat capacity (J/K): {model_parameters['heat_capacity']}, "
             f"\n\t- heating delta temperature (K): {model_parameters['heating_delta_temperature']}, "
@@ -302,13 +303,13 @@ class UserApp:
             f"\n\t- minimal temperature setting (°C): {model_parameters['min_temp_setting']},"
             f"\n\t- maximal temperature setting (°C): {model_parameters['max_temp_setting']}."
         )
-        storage_parameters = algo_input.storage_parameters
+        storage_parameters = json.loads(algo_input.storage_parameters)
         self.app_logger.info(
             f"Storage parameters: \n\t- max capacity (kWh): {storage_parameters['max_capacity']}, "
             f"\n\t- nominal power (kW): {storage_parameters['nominal_power']}, "
             f"\n\t- efficiency: {storage_parameters['efficiency']}."
         )
-        ev_battery_parameters = algo_input.ev_battery_parameters
+        ev_battery_parameters = json.loads(algo_input.ev_battery_parameters)
         time_until_ev_charged = ev_battery_parameters['time_until_charged']
         self.app_logger.info(
             f"EV battery parameters: \n\t- max capacity (kWh): {ev_battery_parameters['max_capacity']}, "
@@ -319,9 +320,10 @@ class UserApp:
             f"\n\t- nominal power (kW): {ev_battery_parameters['nominal_power']}, "
             f"\n\t- efficiency: {ev_battery_parameters['efficiency']}."
         )
-        temperature_inside = np.mean(np.array([room["curr_temp"] for room in algo_input.heating_parameters_per_room]))
+        temperature_inside = np.mean(np.array([room["curr_temp"]
+                                               for room in json.loads(algo_input.heating_parameters_per_room)]))
         preferred_temperature = np.mean(np.array([room["preferred_temp"]
-                                                  for room in algo_input.heating_parameters_per_room]))
+                                                  for room in json.loads(algo_input.heating_parameters_per_room)]))
         self.app_logger.info(f"Inside temperature (°C): {round(temperature_inside, 2)}")
         self.app_logger.info(f"Preferred temperature (°C): {round(preferred_temperature, 2)}")
         self.app_logger.info(f"Current storage SOC (%): {round(storage_parameters['curr_charge_level'], 2)}")
@@ -330,12 +332,12 @@ class UserApp:
         if algo_res is not None:
             self.execute_algo_response(algo_res)
             self.app_logger.info("\n\tOUTPUT")
-            temperature_setting = np.mean(np.array([v for v in algo_res[0].values()]))
+            temperature_setting = np.mean(np.array([v for v in json.loads(algo_res[0]).values()]))
             self.app_logger.info(
                 f"Configuration of temperature (°C): {round(temperature_setting, 2)}"
             )
-            self.app_logger.info(f"Configuration of storage: {algo_res[1]}")
-            self.app_logger.info(f"Configuration of EV battery: {algo_res[2]}")
+            self.app_logger.info(f"Configuration of storage: {json.loads(algo_res[1])}")
+            self.app_logger.info(f"Configuration of EV battery: {json.loads(algo_res[2])}")
         else:
             self.app_logger.warning("Decision algorithm call failed")
 
@@ -346,7 +348,7 @@ class UserApp:
         self.app_logger.info("\n\x1B[2J\x1B[H")
         self.app_logger.info(f"{self.start_date + timedelta(seconds=self.metrology.get_uptime())}")
         self.app_logger.info("Training parameters:")
-        self.app_logger.info(f"{json.dumps(algo_input.train_parameters, indent=4)}")
+        self.app_logger.info(f"{json.dumps(json.loads(algo_input.train_parameters), indent=4)}")
 
         start_time = time.time()
         algo_res = self.run_algo(self.training_algo, algo_input)

@@ -116,6 +116,8 @@ S3_PARAMETERS = {
     "endpoint_url": "https://s3.sovereignedge.eu/",
     "bucket_name": "uc3-test-bucket",
     "model_filename": "files/onnx_model_from_cognit.onnx",
+    "access_key_id": "eXuxY2Gt4bI8PTScQ9gz",
+    "secret_access_key": "RtomdwwpoN7tkQe6ZZSPZTGScvQ0GtEwVhObreo4",
 }
 
 BESMART_PARAMETERS = {
