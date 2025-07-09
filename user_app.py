@@ -28,9 +28,9 @@ class AlgoPredictParams:
     besmart_parameters: str
     home_model_parameters: str
     storage_parameters: str
-    ev_battery_parameters: str
-    heating_parameters_per_room: str
-    cycle_timedelta_s: int
+    ev_battery_parameters_per_id: str
+    heating_parameters: str
+    user_preferences: str
 
 @dataclass
 class AlgoTrainParams:
@@ -39,9 +39,9 @@ class AlgoTrainParams:
     besmart_parameters: str
     home_model_parameters: str
     storage_parameters: str
-    ev_battery_parameters: str
+    ev_battery_parameters_per_id: str
     heating_parameters: str
-    cycle_timedelta_s: int
+    user_preferences: str
 
 
 class UserApp:
@@ -57,6 +57,7 @@ class UserApp:
     train_parameters: dict[str, Any]
     s3_parameters: dict[str, str]
     besmart_parameters: dict[str, Any]
+    user_preferences: dict[str, Any]
 
     # Offloaded functions
     training_algo: Callable
@@ -103,6 +104,7 @@ class UserApp:
             num_cycles_retrain: int,
             heating_user_preferences: dict[str, HeatingPreferences],
             ev_departure_plans: EVDeparturePlans,
+            user_preferences: dict[str, Any],
             besmart_parameters: dict[str, Any],
             use_cognit: bool = True,
             reqs_init: dict[str, Any] = None,
@@ -127,6 +129,7 @@ class UserApp:
         self.ev_departure_plans = ev_departure_plans
         self.use_cognit = use_cognit
         self.besmart_parameters = besmart_parameters
+        self.user_preferences = user_preferences
 
         self.use_model = use_model
         self.training_algo = training_algo
@@ -198,11 +201,13 @@ class UserApp:
         storage_parameters = self.energy_storage.get_info()
         ev_parameters = self.electric_vehicle.get_info()
         ev_parameters["time_until_charged"] = self.ev_departure_plans.get_time_until_departure()
+        ev_parameters_per_id = {0: ev_parameters}
         room_heating_params_list = []
         for room, value in self.heating_user_preferences.items():
             params = self.room_heating[room].get_info()
             params["preferred_temp"] = value.get_temp()
             room_heating_params_list.append(params)
+        self.user_preferences["cycle_timedelta_s"] = self.cycle_time
 
         energy = self.metrology.get_energy_total()
         self.last_active_plus = energy.active_plus
@@ -217,23 +222,24 @@ class UserApp:
             json.dumps(self.besmart_parameters),
             json.dumps(self.model_parameters),
             json.dumps(storage_parameters),
-            json.dumps(ev_parameters),
-            json.dumps(room_heating_params_list),
-            self.cycle_time
+            json.dumps(ev_parameters_per_id),
+            json.dumps(room_heating_params_list[0]),
+            json.dumps(self.user_preferences),
         )
         return algo_input
 
     def update_training_algo_input(self, now: float) -> AlgoTrainParams:
         self.last_algo_run = now
         last_timestamp = self.start_date + timedelta(seconds=self.metrology.get_uptime() - self.cycle_time)
-        first_timestamp = last_timestamp - timedelta(days=self.train_parameters["data_timedelta_days"])
+        first_timestamp = last_timestamp - timedelta(days=self.train_parameters["history_timedelta_days"])
         self.besmart_parameters["since"] = first_timestamp.timestamp()
         self.besmart_parameters["till"] = last_timestamp.timestamp()
-
+        ev_parameters_per_id = {0: self.electric_vehicle.get_info()}
         room_heating_params_list = []
         for room, value in self.heating_user_preferences.items():
             params = self.room_heating[room].get_info()
             room_heating_params_list.append(params)
+        self.user_preferences["cycle_timedelta_s"] = self.cycle_time
 
         algo_input = AlgoTrainParams(
             json.dumps(self.train_parameters),
@@ -241,9 +247,9 @@ class UserApp:
             json.dumps(self.besmart_parameters),
             json.dumps(self.model_parameters),
             json.dumps(self.energy_storage.get_info()),
-            json.dumps(self.electric_vehicle.get_info()),
+            json.dumps(ev_parameters_per_id),
             json.dumps(room_heating_params_list[0]),
-            self.cycle_time,
+            json.dumps(self.user_preferences),
         )
         return algo_input
 
@@ -309,7 +315,7 @@ class UserApp:
             f"\n\t- nominal power (kW): {storage_parameters['nominal_power']}, "
             f"\n\t- efficiency: {storage_parameters['efficiency']}."
         )
-        ev_battery_parameters = json.loads(algo_input.ev_battery_parameters)
+        ev_battery_parameters = json.loads(algo_input.ev_battery_parameters_per_id)[0]
         time_until_ev_charged = ev_battery_parameters['time_until_charged']
         self.app_logger.info(
             f"EV battery parameters: \n\t- max capacity (kWh): {ev_battery_parameters['max_capacity']}, "
@@ -320,10 +326,8 @@ class UserApp:
             f"\n\t- nominal power (kW): {ev_battery_parameters['nominal_power']}, "
             f"\n\t- efficiency: {ev_battery_parameters['efficiency']}."
         )
-        temperature_inside = np.mean(np.array([room["curr_temp"]
-                                               for room in json.loads(algo_input.heating_parameters_per_room)]))
-        preferred_temperature = np.mean(np.array([room["preferred_temp"]
-                                                  for room in json.loads(algo_input.heating_parameters_per_room)]))
+        temperature_inside = json.loads(algo_input.heating_parameters)["curr_temp"]
+        preferred_temperature = json.loads(algo_input.heating_parameters)["preferred_temp"]
         self.app_logger.info(f"Inside temperature (°C): {round(temperature_inside, 2)}")
         self.app_logger.info(f"Preferred temperature (°C): {round(preferred_temperature, 2)}")
         self.app_logger.info(f"Current storage SOC (%): {round(storage_parameters['curr_charge_level'], 2)}")

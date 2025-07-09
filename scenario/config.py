@@ -71,6 +71,9 @@ MODEL_PARAMETERS = {
     "storage_high_charge_level": 90.0,
     "min_temp_setting": 17.,
     "max_temp_setting": 24.,
+}
+
+USER_PREFERENCES = {
     "ev_driving_schedule": {
         "time": ["0:00", "8:00", "15:00", "20:00", "22:00"],
         "driving_power": [0., 5., 0., 8., 0.],
@@ -81,17 +84,8 @@ MODEL_PARAMETERS = {
     },
 }
 
-
-PV_PRODUCTION_REAL_PATH = 'data/pv_production.csv'
-UNCONTROLLED_CONSUMPTION_REAL_PATH = 'data/uncontrolled_consumption.csv'
-TEMP_OUTSIDE_REAL_PATH = 'data/temp_outside.csv'
-PV_PRODUCTION_PRED_PATH = 'data/pv_production_pred.csv'
-UNCONTROLLED_CONSUMPTION_PRED_PATH = 'data/uncontrolled_consumption_pred.csv'
-TEMP_OUTSIDE_PRED_PATH = 'data/temp_outside_pred.csv'
-
-
 TRAIN_PARAMETERS = {
-    "data_timedelta_days": 90,
+    "history_timedelta_days": 90,
     "num_episodes": 8000,
     "critic_lr": 0.001,
     "actor_lr": 0.001,
