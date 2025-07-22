@@ -255,18 +255,17 @@ class UserApp:
 
     def execute_algo_response(self, algo_res: str):
         (
-            conf_temp_per_room,
+            conf_temp,
             storage_params,
             ev_params,
             *_
         ) = algo_res
         self.energy_storage.set_params(json.loads(storage_params))
-        self.electric_vehicle.set_params(json.loads(ev_params))
-        conf_temp_per_room = json.loads(conf_temp_per_room)
+        self.electric_vehicle.set_params(json.loads(ev_params)["0"])
         for key, value in self.room_heating.items():
             value.set_params(
                 {
-                    "optimal_temp": conf_temp_per_room[key],
+                    "optimal_temp": conf_temp,
                 }
             )
 
@@ -276,9 +275,11 @@ class UserApp:
             ret = algo_function(*astuple(algo_input))
         else:
             try:
-                return_code, ret = self.runtime.call(algo_function, *astuple(algo_input))
+                ret = self.runtime.call(algo_function, *astuple(algo_input))
+                self.app_logger.error(f"ELO: {ret}")
                 self.global_logger.info("Offload OK")
             except:
+                raise
                 self.global_logger.error("Offload ERROR")
         return ret
 
@@ -315,7 +316,7 @@ class UserApp:
             f"\n\t- nominal power (kW): {storage_parameters['nominal_power']}, "
             f"\n\t- efficiency: {storage_parameters['efficiency']}."
         )
-        ev_battery_parameters = json.loads(algo_input.ev_battery_parameters_per_id)[0]
+        ev_battery_parameters = json.loads(algo_input.ev_battery_parameters_per_id)['0']
         time_until_ev_charged = ev_battery_parameters['time_until_charged']
         self.app_logger.info(
             f"EV battery parameters: \n\t- max capacity (kWh): {ev_battery_parameters['max_capacity']}, "
@@ -336,9 +337,8 @@ class UserApp:
         if algo_res is not None:
             self.execute_algo_response(algo_res)
             self.app_logger.info("\n\tOUTPUT")
-            temperature_setting = np.mean(np.array([v for v in json.loads(algo_res[0]).values()]))
             self.app_logger.info(
-                f"Configuration of temperature (°C): {round(temperature_setting, 2)}"
+                f"Configuration of temperature (°C): {round(algo_res[0], 2)}"
             )
             self.app_logger.info(f"Configuration of storage: {json.loads(algo_res[1])}")
             self.app_logger.info(f"Configuration of EV battery: {json.loads(algo_res[2])}")

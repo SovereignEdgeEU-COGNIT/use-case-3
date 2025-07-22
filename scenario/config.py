@@ -7,13 +7,19 @@ ALGORITHM_VERSION = "AI"
 REQS_INIT = {
     "baseline":
         {
-            "FLAVOUR": "EnergyV2",
-            "MIN_ENERGY_RENEWABLE_USAGE": 50,
+            "FLAVOUR": "Energy",
+            "GEOLOCATION": {
+                "latitude": 43.05,
+                "longitude": -2.53,
+            },
         },
     "AI":
         {
-            "FLAVOUR": "EnergyV2__16GB_1CPU",
-            "MIN_ENERGY_RENEWABLE_USAGE": 50,
+            "FLAVOUR": "EnergyTorch",
+            "GEOLOCATION": {
+                "latitude": 43.05,
+                "longitude": -2.53,
+            },
         },
 }
 
@@ -75,8 +81,10 @@ MODEL_PARAMETERS = {
 
 USER_PREFERENCES = {
     "ev_driving_schedule": {
-        "time": ["0:00", "8:00", "15:00", "20:00", "22:00"],
-        "driving_power": [0., 5., 0., 8., 0.],
+        0: {
+            "time": ["0:00", "8:00", "15:00", "20:00", "22:00"],
+            "driving_power": [0., 5., 0., 8., 0.],
+        },
     },
     "pref_temp_schedule": {
         "time": ["0:00", "7:00", "9:00", "17:00", "23:00"],
