@@ -22,7 +22,7 @@ from home_energy_management.device_simulators.electric_vehicle import (
     ScheduledEVDeparturePlans
 )
 from home_energy_management.device_simulators.heating import (
-    RoomHeating,
+    Heating,
     ScheduledTempSensor,
     LiveTempSensor,
     LiveHeatingPreferences,
@@ -156,18 +156,24 @@ if cmd_args.live:
     pv = LivePV()
     consumption = SimpleLiveDevice()
     heating_preferences = LiveHeatingPreferences(INITIAL_STATE["heating_preferences"])
-    ev_driving = LiveEVDriving(INITIAL_STATE["ev_driving_power"])
-    ev_departure_plans = LiveEVDeparturePlans(INITIAL_STATE["ev_departure_time"])
-    other_devices.append(ev_departure_plans)
+    ev_driving = {}
+    ev_departure_plans = {}
+    for ev_id, ev_initial_state in INITIAL_STATE["ev_state"].items():
+        ev_driving[ev_id] = LiveEVDriving(INITIAL_STATE["ev_driving_power"])
+        ev_departure_plans[ev_id] = LiveEVDeparturePlans(INITIAL_STATE["ev_departure_time"])
+    other_devices.append(*ev_departure_plans.values())
 else:
     start_date = datetime.fromisoformat(START_DATE)
     temp_outside_sensor = ScheduledTempSensor(TEMP_OUTSIDE_CONFIG, LOOP)
     pv = ScheduledPV(PV_CONFIG, LOOP)
     consumption = SimpleScheduledDevice(CONSUMPTION_CONFIG, LOOP)
     heating_preferences = ScheduledHeatingPreferences(HEATING_PREFERENCES, LOOP)
-    ev_driving = ScheduledEVDriving(EV_POWER_CONFIG, LOOP)
-    ev_departure_plans = ScheduledEVDeparturePlans(EV_POWER_CONFIG, LOOP)
-    other_devices.extend([heating_preferences, ev_driving, ev_departure_plans])
+    ev_driving = {}
+    ev_departure_plans = {}
+    for ev_id, ev_power_config in EV_POWER_CONFIG.items():
+        ev_driving[ev_id] = ScheduledEVDriving(ev_power_config, LOOP)
+        ev_departure_plans[ev_id] = ScheduledEVDeparturePlans(ev_power_config, LOOP)
+    other_devices.extend([heating_preferences, *ev_driving.values(), *ev_departure_plans.values()])
 
 storage = Storage(
     max_power=STORAGE_CONFIG["max_power"],
@@ -185,41 +191,42 @@ storage = Storage(
     voltage=[0.0, 0.0, 0.0],
 )
 
-electric_vehicle = ElectricVehicle(
-    max_power=EV_CONFIG["max_power"],
-    max_capacity=EV_CONFIG["max_capacity"],
-    min_charge_level=EV_CONFIG["min_charge_level"],
-    driving_charge_level=EV_CONFIG["driving_charge_level"],
-    charging_switch_level=EV_CONFIG["charging_switch_level"],
-    efficiency=EV_CONFIG["efficiency"],
-    energy_loss=EV_CONFIG["energy_loss"],
-    is_available=INITIAL_STATE["ev_driving_power"] == 0.0,
-    get_driving_power=ev_driving.get_driving_power,
-    current=[0, 0, 0],
-    curr_capacity=INITIAL_STATE["ev_battery_capacity"],
-    max_charge_rate=1.0,
-    max_discharge_rate=1.0,
-    operation_mode=0,
-    last_capacity_update=0,
-    voltage=[0, 0, 0],
-)
+electric_vehicle_per_id = {}
+for ev_id, ev_config in EV_CONFIG.items():
+    ev_initial_state = INITIAL_STATE["ev_state"][ev_id]
+    electric_vehicle_per_id[ev_id] = ElectricVehicle(
+        max_power=ev_config["max_power"],
+        max_capacity=ev_config["max_capacity"],
+        min_charge_level=ev_config["min_charge_level"],
+        driving_charge_level=ev_config["driving_charge_level"],
+        charging_switch_level=ev_config["charging_switch_level"],
+        efficiency=ev_config["efficiency"],
+        energy_loss=ev_config["energy_loss"],
+        is_available=ev_initial_state["ev_driving_power"] == 0.0,
+        get_driving_power=ev_driving[ev_id].get_driving_power,
+        current=[0, 0, 0],
+        curr_capacity=ev_initial_state["ev_battery_capacity"],
+        max_charge_rate=1.0,
+        max_discharge_rate=1.0,
+        operation_mode=0,
+        last_capacity_update=0,
+        voltage=[0, 0, 0],
+    )
 
-room_heating = {
-    "room": RoomHeating(
-        heat_capacity=HEATING_CONFIG["room"]["heat_capacity"],
-        heating_coefficient=HEATING_CONFIG["room"]["heating_coefficient"],
-        heating_loss=HEATING_CONFIG["room"]["heating_loss"],
-        name="room",
-        temp_window=HEATING_CONFIG["room"]["temp_window"],
-        heating_devices_power=HEATING_CONFIG["room"]["heating_devices_power"],
-        curr_temp=INITIAL_STATE["curr_room_temp"],
-        is_device_switch_on=[False, False],
-        optimal_temp=INITIAL_STATE["heating_preferences"],
-        last_temp_update=0,
-        current=[0.0, 0.0, 0.0],
-        get_temp_outside=temp_outside_sensor.get_temp,
-    ),
-}
+heating = Heating(
+    heat_capacity=HEATING_CONFIG["heat_capacity"],
+    heating_coefficient=HEATING_CONFIG["heating_coefficient"],
+    heating_loss=HEATING_CONFIG["heating_loss"],
+    name="room",
+    temp_window=HEATING_CONFIG["temp_window"],
+    heating_devices_power=HEATING_CONFIG["heating_devices_power"],
+    curr_temp=INITIAL_STATE["curr_room_temp"],
+    is_device_switch_on=[False, False],
+    optimal_temp=INITIAL_STATE["heating_preferences"],
+    last_temp_update=0,
+    current=[0.0, 0.0, 0.0],
+    get_temp_outside=temp_outside_sensor.get_temp,
+)
 
 
 print("Initializing Simulation")
@@ -228,8 +235,8 @@ simulation = SimulationRunner(
     pv=pv,
     storage=storage,
     consumption_device=consumption,
-    room_heating=room_heating,
-    electric_vehicle=electric_vehicle,
+    heating=heating,
+    electric_vehicle_per_id=electric_vehicle_per_id,
     other_devices=other_devices,
     temp_outside=temp_outside_sensor,
     speedup=SPEEDUP,
@@ -248,18 +255,16 @@ app = UserApp(
     train_parameters=TRAIN_PARAMETERS if algorithm_version == "AI" else None,
     user_preferences=USER_PREFERENCES,
     pv=pv,
-    electric_vehicle=electric_vehicle,
+    electric_vehicle_per_id=electric_vehicle_per_id,
     energy_storage=storage,
-    room_heating=room_heating,
+    heating=heating,
     temp_outside_sensor=temp_outside_sensor,
     speedup=speedup,
     cycle=userapp_cycle,
     num_cycles_retrain=num_cycles_retrain,
     use_cognit=cmd_args.offload,
     reqs_init=REQS_INIT[algorithm_version],
-    heating_user_preferences={
-        "room": heating_preferences,
-    },
+    heating_user_preferences=heating_preferences,
     ev_departure_plans=ev_departure_plans,
 )
 
@@ -342,12 +347,12 @@ def print_help():
             "sets temperature outside",
         ),
         (
-            "set_ev_driving_power(driving_power: float)",
-            "sets EV driving power",
+            "set_ev_driving_power(ev_name: str, driving_power: float)",
+            "sets current driving power of EV with id ev_name",
         ),
         (
-            "set_ev_departure_time(ev_departure_time: str)",
-            "sets user-planned EV departure time in format %H:%M when EV must be charged",
+            "set_ev_departure_time(ev_name: str, ev_departure_time: str)",
+            "sets user-planned EV departure time in format %H:%M when EV with id ev_name must be charged",
         ),
     ]
 
@@ -370,7 +375,7 @@ def set_heating_preferences(temp: float):
     if not cmd_args.live:
         print("Error: Live mode disabled")
         return
-    app.set_heating_user_preferences("room", LiveHeatingPreferences(temp))
+    app.set_heating_user_preferences(LiveHeatingPreferences(temp))
 
 
 def set_pv_state(current: float):
@@ -397,18 +402,18 @@ def set_temp_outside(temp: float):
     temp_outside_sensor.set_temp(temp)
 
 
-def set_ev_driving_power(driving_power: float):
+def set_ev_driving_power(ev_name: str, driving_power: float):
     if not cmd_args.live:
         print("Error: Live mode disabled")
         return
-    ev_driving.set_driving_power(driving_power)
+    ev_driving[ev_name].set_driving_power(driving_power)
 
 
-def set_ev_departure_time(ev_departure_time: str):
+def set_ev_departure_time(ev_name: str, ev_departure_time: str):
     if not cmd_args.live:
         print("Error: Live mode disabled")
         return
-    ev_departure_plans.update_state(ev_departure_time)
+    ev_departure_plans[ev_name].update_state(ev_departure_time)
 
 
 def set_speedup(speedup: int):

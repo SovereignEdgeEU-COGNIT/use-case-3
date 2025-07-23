@@ -7,11 +7,12 @@ import os
 
 import phoenixsystems.sem.metersim as metersim
 from home_energy_management.device_simulators.electric_vehicle import ElectricVehicle
-from home_energy_management.device_simulators.heating import RoomHeating, TempSensor
+from home_energy_management.device_simulators.heating import Heating, TempSensor
 from home_energy_management.device_simulators.storage import Storage
 from home_energy_management.device_simulators.gateway import Gateway
 from home_energy_management.device_simulators.photovoltaic import AbstractPV
 from home_energy_management.device_simulators.simple_device import SimpleDevice
+from sqlalchemy.cyextension.util import Mapping
 
 log_handler = logging.FileHandler(f"log/{os.getpid()}/simulation.log")
 formatter = logging.Formatter("")
@@ -28,9 +29,9 @@ class SimulationRunner:
     storage: Storage
     pv: AbstractPV
     consumption_device: SimpleDevice
-    room_heating: dict[str, RoomHeating]
+    heating: Heating
     gateway: Gateway
-    electric_vehicle: ElectricVehicle
+    electric_vehicle_per_id: Mapping[str, ElectricVehicle]
     other_devices: list[metersim.Device]
     temp_outside: TempSensor
 
@@ -42,8 +43,8 @@ class SimulationRunner:
             pv: AbstractPV,
             storage: Storage,
             consumption_device: SimpleDevice,
-            room_heating: dict[str, RoomHeating],
-            electric_vehicle: ElectricVehicle,
+            heating: Heating,
+            electric_vehicle_per_id: Mapping[str, ElectricVehicle],
             other_devices: list[metersim.Device],
             temp_outside: TempSensor,
             speedup: int,
@@ -52,8 +53,8 @@ class SimulationRunner:
         self.pv = pv
         self.consumption_device = consumption_device
         self.storage = storage
-        self.room_heating = room_heating
-        self.electric_vehicle = electric_vehicle
+        self.heating = heating
+        self.electric_vehicle_per_id = electric_vehicle_per_id
         self.temp_outside = temp_outside
         self.other_devices = other_devices
         self.speedup = speedup
@@ -80,10 +81,10 @@ class SimulationRunner:
 
         devices = [
             self.consumption_device,
-            self.electric_vehicle,
+            *self.electric_vehicle_per_id.values(),
             self.temp_outside,
             *self.other_devices,
-            *self.room_heating.values(),
+            self.heating,
         ]
         self.gateway = Gateway(devices, self.storage, self.pv)
         self.sem.add_device(self.gateway)
@@ -110,23 +111,26 @@ class SimulationRunner:
             f"\n\t- Current (A): {round(self.storage.current[0].real, 2)}"
             f"\n\t- SOC (%): {round(self.storage.get_info()['curr_charge_level'], 2)}"
         )
-        logger.info(
-            f"Electric Vehicle:"
-            f"\n\t- Is available: {self.electric_vehicle.get_info()['is_available']}"
-            f"\n\t- Driving power (kW): {round(self.electric_vehicle.get_info()['driving_power'], 2)}"
-            f"\n\t- Current (A): {round(self.electric_vehicle.current[0].real, 2)}"
-            f"\n\t- SOC (%): {round(self.electric_vehicle.get_info()['curr_charge_level'], 2)}"
-        )
+        if len(self.electric_vehicle_per_id) > 0:
+            logger.info(f"Electric Vehicle:")
+        for ev_id, electric_vehicle in self.electric_vehicle_per_id.items():
+            logger.info(
+                f"\n\t- ID: {ev_id}"
+                f"\n\t\t- Is available: {electric_vehicle.get_info()['is_available']}"
+                f"\n\t\t- Driving power (kW): {round(electric_vehicle.get_info()['driving_power'], 2)}"
+                f"\n\t\t- Current (A): {round(electric_vehicle.current[0].real, 2)}"
+                f"\n\t\t- SOC (%): {round(electric_vehicle.get_info()['curr_charge_level'], 2)}"
+            )
         logger.info(
             f"Photovoltaic:" 
             f"\n\t- Current (A): {round(self.pv.current[0].real, 2)}"
         )
         logger.info(
             f"Heating:"
-            f"\n\t- Current temperature (°C): {round(self.room_heating['room'].get_info()['curr_temp'], 2)}"
-            f"\n\t- Optimal temperature (°C): {round(self.room_heating['room'].get_info()['optimal_temp'], 2)}"
+            f"\n\t- Current temperature (°C): {round(self.heating.get_info()['curr_temp'], 2)}"
+            f"\n\t- Optimal temperature (°C): {round(self.heating.get_info()['optimal_temp'], 2)}"
             f"\n\t- Outside temperature (°C): {round(self.temp_outside.get_temp(now), 2)}"
-            f"\n\t- Current (A): {round(self.room_heating['room'].current[0].real, 2)}"
+            f"\n\t- Current (A): {round(self.heating.current[0].real, 2)}"
         )
         logger.info(
             f"Consumption of other devices:"
@@ -139,7 +143,7 @@ class SimulationRunner:
 
         while not self.shutdown_flag:
             now = self.sem.get_uptime()
-            self.room_heating["room"].update_state(now)
+            self.heating.update_state(now)
             self.log(now)
 
             sec += 1

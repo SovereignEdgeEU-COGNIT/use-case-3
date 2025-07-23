@@ -35,24 +35,24 @@ STORAGE_CONFIG = {
 
 
 EV_CONFIG = {
-    "max_power": 6.9,  # (kW)
-    "max_capacity": 40.0,  # (kWh)
-    "min_charge_level": 10.0,  # (%)
-    "driving_charge_level": 80.0,  # (%)
-    "charging_switch_level": 75.0,  # (%)
-    "efficiency": 0.85,
-    "energy_loss": 0.0,
+    "0": {
+        "max_power": 6.9,  # (kW)
+        "max_capacity": 40.0,  # (kWh)
+        "min_charge_level": 10.0,  # (%)
+        "driving_charge_level": 80.0,  # (%)
+        "charging_switch_level": 75.0,  # (%)
+        "efficiency": 0.85,
+        "energy_loss": 0.0,
+    },
 }
 
 
 HEATING_CONFIG = {
-    "room": {
-        "heat_capacity": 3.6e7,
-        "heating_coefficient": 0.98,
-        "heating_loss": 300.0,
-        "temp_window": 0.75,
-        "heating_devices_power": [8.0, 8.0],
-    }
+    "heat_capacity": 3.6e7,
+    "heating_coefficient": 0.98,
+    "heating_loss": 300.0,
+    "temp_window": 0.75,
+    "heating_devices_power": [8.0, 8.0],
 }
 
 
@@ -62,17 +62,21 @@ INITIAL_STATE = {
     "live_temp_outside": 15.0,  # (°C)
     "heating_preferences": 20.0,  # (°C)
     "storage_capacity": 12.0,  # (kWh)
-    "ev_battery_capacity": 20.0,  # (kWh)
-    "ev_driving_power": 0.0,  # (kW)
-    "ev_departure_time": "08:00",  # HH:mm
+    "ev_state": {
+        "0": {
+            "ev_battery_capacity": 20.0,  # (kWh)
+            "ev_driving_power": 0.0,  # (kW)
+            "ev_departure_time": "08:00",  # HH:mm
+        },
+    },
 }
 
 
 MODEL_PARAMETERS = {
-    "heat_capacity": HEATING_CONFIG["room"]["heat_capacity"],
-    "heating_delta_temperature": HEATING_CONFIG["room"]["temp_window"],
-    "heating_coefficient": HEATING_CONFIG["room"]["heating_coefficient"],
-    "heat_loss_coefficient": HEATING_CONFIG["room"]["heating_loss"],
+    "heat_capacity": HEATING_CONFIG["heat_capacity"],
+    "heating_delta_temperature": HEATING_CONFIG["temp_window"],
+    "heating_coefficient": HEATING_CONFIG["heating_coefficient"],
+    "heat_loss_coefficient": HEATING_CONFIG["heating_loss"],
     "delta_charging_power_perc": 5.0,
     "storage_high_charge_level": 90.0,
     "min_temp_setting": 17.,
@@ -81,7 +85,7 @@ MODEL_PARAMETERS = {
 
 USER_PREFERENCES = {
     "ev_driving_schedule": {
-        0: {
+        "0": {
             "time": ["0:00", "8:00", "15:00", "20:00", "22:00"],
             "driving_power": [0., 5., 0., 8., 0.],
         },
@@ -94,7 +98,7 @@ USER_PREFERENCES = {
 
 TRAIN_PARAMETERS = {
     "history_timedelta_days": 90,
-    "num_episodes": 8000,
+    "num_episodes": 1000,  # TODO 8000
     "critic_lr": 0.001,
     "actor_lr": 0.001,
     "gamma": 0.2,  # Discount factor for future rewards

@@ -7,7 +7,6 @@ from dataclasses import dataclass, astuple
 from datetime import datetime, timedelta
 from typing import Any, Callable, Mapping
 
-import numpy as np
 import phoenixsystems.sem.metersim as metersim
 from cognit import device_runtime
 
@@ -15,11 +14,6 @@ from home_energy_management.device_simulators.device_utils import DeviceUserApi
 from home_energy_management.device_simulators.heating import HeatingPreferences
 from home_energy_management.device_simulators.electric_vehicle import EVDeparturePlans
 
-
-REQS_INIT = {
-      "FLAVOUR": "EnergyV2",
-      "MIN_ENERGY_RENEWABLE_USAGE": 50,
-}
 
 @dataclass
 class AlgoPredictParams:
@@ -48,8 +42,8 @@ class UserApp:
     start_date: datetime
     runtime: device_runtime.DeviceRuntime  # Cognit Serverless Runtime
     metrology: metersim.Metersim  # Metrology
-    heating_user_preferences: dict[str, HeatingPreferences]
-    ev_departure_plans: EVDeparturePlans
+    heating_user_preferences: HeatingPreferences
+    ev_departure_plans: dict[str, EVDeparturePlans]
     cycle_time: int
     speedup: int
     num_cycles_retrain: int
@@ -66,8 +60,8 @@ class UserApp:
     # Devices
     pv: DeviceUserApi
     energy_storage: DeviceUserApi
-    electric_vehicle: DeviceUserApi
-    room_heating: Mapping[str, DeviceUserApi]
+    electric_vehicle_per_id: Mapping[str, DeviceUserApi]
+    heating: DeviceUserApi
     temp_outside_sensor: DeviceUserApi
 
     # Utils
@@ -96,14 +90,14 @@ class UserApp:
             model_parameters: dict[str, float],
             pv: DeviceUserApi,
             energy_storage: DeviceUserApi,
-            electric_vehicle: DeviceUserApi,
-            room_heating: Mapping[str, DeviceUserApi],
+            electric_vehicle_per_id: Mapping[str, DeviceUserApi],
+            heating: DeviceUserApi,
             temp_outside_sensor: DeviceUserApi,
             speedup: int,
             cycle: int,
             num_cycles_retrain: int,
-            heating_user_preferences: dict[str, HeatingPreferences],
-            ev_departure_plans: EVDeparturePlans,
+            heating_user_preferences: HeatingPreferences,
+            ev_departure_plans: dict[str, EVDeparturePlans],
             user_preferences: dict[str, Any],
             besmart_parameters: dict[str, Any],
             use_cognit: bool = True,
@@ -119,8 +113,8 @@ class UserApp:
         self.model_parameters = model_parameters
         self.pv = pv
         self.energy_storage = energy_storage
-        self.electric_vehicle = electric_vehicle
-        self.room_heating = room_heating
+        self.electric_vehicle_per_id = electric_vehicle_per_id
+        self.heating = heating
         self.temp_outside_sensor = temp_outside_sensor
         self.speedup = speedup
         self.cycle_time = cycle
@@ -176,8 +170,8 @@ class UserApp:
 
         self.cognit_logger.info("Runtime should be ready now!")
 
-    def set_heating_user_preferences(self, room: str, pref: HeatingPreferences):
-        self.heating_user_preferences[room] = pref
+    def set_heating_user_preferences(self, pref: HeatingPreferences):
+        self.heating_user_preferences = pref
 
     def offload_now(self):
         with self.cond:
@@ -199,14 +193,13 @@ class UserApp:
         next_timestamp = self.start_date + timedelta(seconds=self.metrology.get_uptime() + self.cycle_time)
 
         storage_parameters = self.energy_storage.get_info()
-        ev_parameters = self.electric_vehicle.get_info()
-        ev_parameters["time_until_charged"] = self.ev_departure_plans.get_time_until_departure()
-        ev_parameters_per_id = {0: ev_parameters}
-        room_heating_params_list = []
-        for room, value in self.heating_user_preferences.items():
-            params = self.room_heating[room].get_info()
-            params["preferred_temp"] = value.get_temp()
-            room_heating_params_list.append(params)
+        ev_parameters_per_id = {}
+        for ev_id, electric_vehicle in self.electric_vehicle_per_id.items():
+            ev_parameters = electric_vehicle.get_info()
+            ev_parameters["time_until_charged"] = self.ev_departure_plans[ev_id].get_time_until_departure()
+            ev_parameters_per_id[ev_id] = ev_parameters
+        heating_parameters = self.heating.get_info()
+        heating_parameters["preferred_temp"] = self.heating_user_preferences.get_temp()
         self.user_preferences["cycle_timedelta_s"] = self.cycle_time
 
         energy = self.metrology.get_energy_total()
@@ -223,7 +216,7 @@ class UserApp:
             json.dumps(self.model_parameters),
             json.dumps(storage_parameters),
             json.dumps(ev_parameters_per_id),
-            json.dumps(room_heating_params_list[0]),
+            json.dumps(heating_parameters),
             json.dumps(self.user_preferences),
         )
         return algo_input
@@ -234,11 +227,9 @@ class UserApp:
         first_timestamp = last_timestamp - timedelta(days=self.train_parameters["history_timedelta_days"])
         self.besmart_parameters["since"] = first_timestamp.timestamp()
         self.besmart_parameters["till"] = last_timestamp.timestamp()
-        ev_parameters_per_id = {0: self.electric_vehicle.get_info()}
-        room_heating_params_list = []
-        for room, value in self.heating_user_preferences.items():
-            params = self.room_heating[room].get_info()
-            room_heating_params_list.append(params)
+        ev_parameters_per_id = {}
+        for ev_id, electric_vehicle in self.electric_vehicle_per_id.items():
+            ev_parameters_per_id[ev_id] = electric_vehicle.get_info()
         self.user_preferences["cycle_timedelta_s"] = self.cycle_time
 
         algo_input = AlgoTrainParams(
@@ -248,7 +239,7 @@ class UserApp:
             json.dumps(self.model_parameters),
             json.dumps(self.energy_storage.get_info()),
             json.dumps(ev_parameters_per_id),
-            json.dumps(room_heating_params_list[0]),
+            json.dumps(self.heating.get_info()),
             json.dumps(self.user_preferences),
         )
         return algo_input
@@ -257,31 +248,31 @@ class UserApp:
         (
             conf_temp,
             storage_params,
-            ev_params,
+            ev_params_per_id,
             *_
         ) = algo_res
         self.energy_storage.set_params(json.loads(storage_params))
-        self.electric_vehicle.set_params(json.loads(ev_params)["0"])
-        for key, value in self.room_heating.items():
-            value.set_params(
-                {
-                    "optimal_temp": conf_temp,
-                }
-            )
+        ev_params_per_id = json.loads(ev_params_per_id)
+        for ev_id, ev_params in ev_params_per_id.items():
+            self.electric_vehicle_per_id[ev_id].set_params(ev_params)
+        self.heating.set_params({"optimal_temp": conf_temp,})
 
     def run_algo(self, algo_function: Callable, algo_input: AlgoPredictParams | AlgoTrainParams) -> Any:
-        ret = None
+        res = None
         if not self.use_cognit:
-            ret = algo_function(*astuple(algo_input))
+            res = algo_function(*astuple(algo_input))
         else:
             try:
                 ret = self.runtime.call(algo_function, *astuple(algo_input))
-                self.app_logger.error(f"ELO: {ret}")
+                res = ret.res
+                self.app_logger.info(f"\nRuntime result: {res}")
+                if ret.err:
+                    self.app_logger.error(f"\nError during offloading: {ret.err}")
                 self.global_logger.info("Offload OK")
             except:
                 raise
                 self.global_logger.error("Offload ERROR")
-        return ret
+        return res
 
     def start(self):
         self.start_time = time.clock_gettime(time.CLOCK_MONOTONIC)
@@ -316,17 +307,19 @@ class UserApp:
             f"\n\t- nominal power (kW): {storage_parameters['nominal_power']}, "
             f"\n\t- efficiency: {storage_parameters['efficiency']}."
         )
-        ev_battery_parameters = json.loads(algo_input.ev_battery_parameters_per_id)['0']
-        time_until_ev_charged = ev_battery_parameters['time_until_charged']
-        self.app_logger.info(
-            f"EV battery parameters: \n\t- max capacity (kWh): {ev_battery_parameters['max_capacity']}, "
-            f"\n\t- is available: {ev_battery_parameters['is_available']}, "
-            f"\n\t- departure SOC (%): {ev_battery_parameters['driving_charge_level']}, "
-            f"\n\t- time until charged (h): "
-            f"{round(time_until_ev_charged / 3600, 2) if time_until_ev_charged > 0 else 'uknown'}, "
-            f"\n\t- nominal power (kW): {ev_battery_parameters['nominal_power']}, "
-            f"\n\t- efficiency: {ev_battery_parameters['efficiency']}."
-        )
+        ev_battery_parameters_per_id = json.loads(algo_input.ev_battery_parameters_per_id)
+        for ev_id, ev_battery_parameters in ev_battery_parameters_per_id.items():
+            time_until_ev_charged = ev_battery_parameters['time_until_charged']
+            self.app_logger.info(
+                f"EV (id: {ev_id}) battery parameters:"
+                f"\n\t- max capacity (kWh): {ev_battery_parameters['max_capacity']}, "
+                f"\n\t- is available: {ev_battery_parameters['is_available']}, "
+                f"\n\t- departure SOC (%): {ev_battery_parameters['driving_charge_level']}, "
+                f"\n\t- time until charged (h): "
+                f"{round(time_until_ev_charged / 3600, 2) if time_until_ev_charged > 0 else 'uknown'}, "
+                f"\n\t- nominal power (kW): {ev_battery_parameters['nominal_power']}, "
+                f"\n\t- efficiency: {ev_battery_parameters['efficiency']}."
+            )
         temperature_inside = json.loads(algo_input.heating_parameters)["curr_temp"]
         preferred_temperature = json.loads(algo_input.heating_parameters)["preferred_temp"]
         self.app_logger.info(f"Inside temperature (°C): {round(temperature_inside, 2)}")
@@ -337,11 +330,13 @@ class UserApp:
         if algo_res is not None:
             self.execute_algo_response(algo_res)
             self.app_logger.info("\n\tOUTPUT")
-            self.app_logger.info(
-                f"Configuration of temperature (°C): {round(algo_res[0], 2)}"
-            )
-            self.app_logger.info(f"Configuration of storage: {json.loads(algo_res[1])}")
-            self.app_logger.info(f"Configuration of EV battery: {json.loads(algo_res[2])}")
+            self.app_logger.info(f"Configuration of temperature (°C): {round(algo_res[0], 2)}")
+            self.app_logger.info(f"Configuration of storage: {json.dumps(json.loads(algo_res[1]), indent=4)}")
+            ev_battery_conf = json.loads(algo_res[2])
+            if len(ev_battery_conf) > 0:
+                self.app_logger.info("Configuration of EV battery:")
+                for ev_id in ev_battery_conf:
+                    self.app_logger.info(f"\t{ev_id}: {json.dumps(ev_battery_conf[ev_id], indent=4)}")
         else:
             self.app_logger.warning("Decision algorithm call failed")
 
