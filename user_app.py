@@ -9,7 +9,6 @@ from typing import Any, Callable, Mapping
 
 import phoenixsystems.sem.metersim as metersim
 from cognit import device_runtime
-
 from home_energy_management.device_simulators.device_utils import DeviceUserApi
 from home_energy_management.device_simulators.heating import HeatingPreferences
 from home_energy_management.device_simulators.electric_vehicle import EVDeparturePlans
@@ -106,7 +105,7 @@ class UserApp:
             training_algo: Callable = None,
             s3_parameters: dict[str, str] = None,
             train_parameters: dict[str, Any] = None,
-    ) -> None:
+    ):
         self.start_date = start_date
         self.metrology = metrology
         self.decision_algo = decision_algo

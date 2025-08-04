@@ -1,5 +1,6 @@
 import argparse
 import importlib.util
+import json
 import os
 import subprocess
 import sys
@@ -33,22 +34,6 @@ from home_energy_management.device_simulators.simple_device import SimpleLiveDev
 from home_energy_management.device_simulators.storage import Storage
 
 from simulation_runner import SimulationRunner
-from scenario.config import (
-    SPEEDUP,
-    USER_APP_CYCLE_LENGTH,
-    NUM_CYCLES_RETRAIN,
-    ALGORITHM_VERSION,
-    REQS_INIT,
-    MODEL_PARAMETERS,
-    TRAIN_PARAMETERS,
-    S3_PARAMETERS,
-    BESMART_PARAMETERS,
-    USER_PREFERENCES,
-    STORAGE_CONFIG,
-    EV_CONFIG,
-    HEATING_CONFIG,
-    INITIAL_STATE,
-)
 from user_app import UserApp
 
 # Parse the arguments
@@ -103,6 +88,26 @@ if cmd_args.live and cmd_args.scenario:
     sys.exit(1)
 
 
+with open('scenario/config.json', 'r') as f:
+    config = json.load(f)
+
+algorithm_version = config["ALGORITHM_VERSION"]
+speedup = config["SPEEDUP"]
+userapp_cycle = config["USER_APP_CYCLE_LENGTH"]
+num_cycles_retrain = config["NUM_CYCLES_RETRAIN"]
+initial_state = config["INITIAL_STATE"]
+storage_config = config["STORAGE_CONFIG"]
+ev_config = config["EV_CONFIG"]
+heating_config = config["HEATING_CONFIG"]
+model_parameters = config["MODEL_PARAMETERS"]
+model_parameters.update(heating_config)
+besmart_parameters = config["BESMART_PARAMETERS"]
+s3_parameters = config["S3_PARAMETERS"]
+train_parameters = config["TRAIN_PARAMETERS"]
+user_preferences = config["USER_PREFERENCES"]
+reqs_init = config["REQS_INIT"]
+
+
 # Load the scenario
 if cmd_args.scenario is not None:
     scenario_spec = importlib.util.spec_from_file_location("scenario", cmd_args.scenario)
@@ -131,36 +136,29 @@ if cmd_args.algorithm_version is not None:
         parser.print_help()
         sys.exit(1)
     algorithm_version = cmd_args.algorithm_version
-else:
-    algorithm_version = ALGORITHM_VERSION
 
 if cmd_args.speedup is not None and cmd_args.cycle is not None:
     speedup = int(cmd_args.speedup)
     userapp_cycle = int(cmd_args.cycle)
-else:
-    speedup = SPEEDUP
-    userapp_cycle = USER_APP_CYCLE_LENGTH
 
 if cmd_args.num_cycles_retrain is not None:
     num_cycles_retrain = int(cmd_args.num_cycles_retrain)
-else:
-    num_cycles_retrain = NUM_CYCLES_RETRAIN
 
 
 # Initialize the devices
 other_devices = []
 
 if cmd_args.live:
-    start_date = datetime.fromisoformat(INITIAL_STATE["start_date"])
-    temp_outside_sensor = LiveTempSensor(INITIAL_STATE["live_temp_outside"])
+    start_date = datetime.fromisoformat(initial_state["start_date"])
+    temp_outside_sensor = LiveTempSensor(initial_state["live_temp_outside"])
     pv = LivePV()
     consumption = SimpleLiveDevice()
-    heating_preferences = LiveHeatingPreferences(INITIAL_STATE["heating_preferences"])
+    heating_preferences = LiveHeatingPreferences(initial_state["heating_preferences"])
     ev_driving = {}
     ev_departure_plans = {}
-    for ev_id, ev_initial_state in INITIAL_STATE["ev_state"].items():
-        ev_driving[ev_id] = LiveEVDriving(INITIAL_STATE["ev_driving_power"])
-        ev_departure_plans[ev_id] = LiveEVDeparturePlans(INITIAL_STATE["ev_departure_time"])
+    for ev_id, ev_initial_state in initial_state["ev_state"].items():
+        ev_driving[ev_id] = LiveEVDriving(initial_state["ev_driving_power"])
+        ev_departure_plans[ev_id] = LiveEVDeparturePlans(initial_state["ev_departure_time"])
     other_devices.append(*ev_departure_plans.values())
 else:
     start_date = datetime.fromisoformat(START_DATE)
@@ -175,15 +173,16 @@ else:
         ev_departure_plans[ev_id] = ScheduledEVDeparturePlans(ev_power_config, LOOP)
     other_devices.extend([heating_preferences, *ev_driving.values(), *ev_departure_plans.values()])
 
+
 storage = Storage(
-    max_power=STORAGE_CONFIG["max_power"],
-    max_capacity=STORAGE_CONFIG["max_capacity"],
-    min_charge_level=STORAGE_CONFIG["min_charge_level"],
-    charging_switch_level=STORAGE_CONFIG["charging_switch_level"],
-    efficiency=STORAGE_CONFIG["efficiency"],
-    energy_loss=STORAGE_CONFIG["energy_loss"],
+    max_power=storage_config["max_power"],
+    max_capacity=storage_config["max_capacity"],
+    min_charge_level=storage_config["min_charge_level"],
+    charging_switch_level=storage_config["charging_switch_level"],
+    efficiency=storage_config["efficiency"],
+    energy_loss=storage_config["energy_loss"],
     current=[0.0, 0.0, 0.0],
-    curr_capacity=INITIAL_STATE["storage_capacity"],
+    curr_capacity=initial_state["storage_capacity"],
     max_charge_rate=1.0,
     max_discharge_rate=1.0,
     operation_mode=2,
@@ -192,16 +191,16 @@ storage = Storage(
 )
 
 electric_vehicle_per_id = {}
-for ev_id, ev_config in EV_CONFIG.items():
-    ev_initial_state = INITIAL_STATE["ev_state"][ev_id]
+for ev_id, ev_config_per_id in ev_config.items():
+    ev_initial_state = initial_state["ev_state"][ev_id]
     electric_vehicle_per_id[ev_id] = ElectricVehicle(
-        max_power=ev_config["max_power"],
-        max_capacity=ev_config["max_capacity"],
-        min_charge_level=ev_config["min_charge_level"],
-        driving_charge_level=ev_config["driving_charge_level"],
-        charging_switch_level=ev_config["charging_switch_level"],
-        efficiency=ev_config["efficiency"],
-        energy_loss=ev_config["energy_loss"],
+        max_power=ev_config_per_id["max_power"],
+        max_capacity=ev_config_per_id["max_capacity"],
+        min_charge_level=ev_config_per_id["min_charge_level"],
+        driving_charge_level=ev_config_per_id["driving_charge_level"],
+        charging_switch_level=ev_config_per_id["charging_switch_level"],
+        efficiency=ev_config_per_id["efficiency"],
+        energy_loss=ev_config_per_id["energy_loss"],
         is_available=ev_initial_state["ev_driving_power"] == 0.0,
         get_driving_power=ev_driving[ev_id].get_driving_power,
         current=[0, 0, 0],
@@ -214,15 +213,15 @@ for ev_id, ev_config in EV_CONFIG.items():
     )
 
 heating = Heating(
-    heat_capacity=HEATING_CONFIG["heat_capacity"],
-    heating_coefficient=HEATING_CONFIG["heating_coefficient"],
-    heating_loss=HEATING_CONFIG["heating_loss"],
+    heat_capacity=heating_config["heat_capacity"],
+    heating_coefficient=heating_config["heating_coefficient"],
+    heat_loss_coefficient=heating_config["heat_loss_coefficient"],
     name="room",
-    temp_window=HEATING_CONFIG["temp_window"],
-    heating_devices_power=HEATING_CONFIG["heating_devices_power"],
-    curr_temp=INITIAL_STATE["curr_room_temp"],
+    temp_window=heating_config["temp_window"],
+    heating_devices_power=heating_config["heating_devices_power"],
+    curr_temp=initial_state["curr_room_temp"],
     is_device_switch_on=[False, False],
-    optimal_temp=INITIAL_STATE["heating_preferences"],
+    optimal_temp=initial_state["heating_preferences"],
     last_temp_update=0,
     current=[0.0, 0.0, 0.0],
     get_temp_outside=temp_outside_sensor.get_temp,
@@ -231,6 +230,7 @@ heating = Heating(
 
 print("Initializing Simulation")
 simulation = SimulationRunner(
+    start_date=start_date,
     scenario_dir="scenario",
     pv=pv,
     storage=storage,
@@ -239,7 +239,7 @@ simulation = SimulationRunner(
     electric_vehicle_per_id=electric_vehicle_per_id,
     other_devices=other_devices,
     temp_outside=temp_outside_sensor,
-    speedup=SPEEDUP,
+    speedup=speedup,
 )
 
 print("Initializing User Application")
@@ -247,13 +247,13 @@ app = UserApp(
     start_date=start_date,
     metrology=simulation.sem,
     decision_algo=baseline_decision_function if algorithm_version == "baseline" else ai_decision_function,
-    model_parameters=MODEL_PARAMETERS,
-    besmart_parameters=BESMART_PARAMETERS,
+    model_parameters=model_parameters,
+    besmart_parameters=besmart_parameters,
     use_model=algorithm_version == "AI",
     training_algo=training_function if algorithm_version == "AI" else None,
-    s3_parameters=S3_PARAMETERS if algorithm_version == "AI" else None,
-    train_parameters=TRAIN_PARAMETERS if algorithm_version == "AI" else None,
-    user_preferences=USER_PREFERENCES,
+    s3_parameters=s3_parameters if algorithm_version == "AI" else None,
+    train_parameters=train_parameters if algorithm_version == "AI" else None,
+    user_preferences=user_preferences,
     pv=pv,
     electric_vehicle_per_id=electric_vehicle_per_id,
     energy_storage=storage,
@@ -263,7 +263,7 @@ app = UserApp(
     cycle=userapp_cycle,
     num_cycles_retrain=num_cycles_retrain,
     use_cognit=cmd_args.offload,
-    reqs_init=REQS_INIT[algorithm_version],
+    reqs_init=reqs_init[algorithm_version],
     heating_user_preferences=heating_preferences,
     ev_departure_plans=ev_departure_plans,
 )
@@ -442,17 +442,17 @@ print(f"PID: {os.getpid()}")
 print(
     80 * "-",
     "\nConfiguration:\n",
-    f"\n  Speedup: {SPEEDUP}",
-    f"\n  User app cycle length: {USER_APP_CYCLE_LENGTH} seconds",
+    f"\n  Speedup: {speedup}",
+    f"\n  User app cycle length: {userapp_cycle} seconds",
     "\n  Cognit renewable energy: 50%",
 )
 if cmd_args.live:
     print(
-        f"\n  Temperature outside (°C): {INITIAL_STATE['live_temp_outside']}",
-        f"\n  Heating preferences (°C): {INITIAL_STATE['heating_preferences']}",
+        f"\n  Temperature outside (°C): {initial_state['live_temp_outside']}",
+        f"\n  Heating preferences (°C): {initial_state['heating_preferences']}",
         "\n  Consumption current (A): 0",
         "\n  PV current (A): 0",
-        f"\n  EV driving power (kW): {INITIAL_STATE['ev_driving_power']}",
+        f"\n  EV driving power (kW): {initial_state['ev_driving_power']}",
         "\n  EV departure time planned: 08:00",
     )
 simulation.start()

@@ -1,17 +1,17 @@
-from datetime import timedelta
-from pathlib import Path
-import threading
-import time
 import logging
 import os
+import threading
+import time
+from datetime import datetime, timedelta
+from pathlib import Path
 
 import phoenixsystems.sem.metersim as metersim
 from home_energy_management.device_simulators.electric_vehicle import ElectricVehicle
-from home_energy_management.device_simulators.heating import Heating, TempSensor
-from home_energy_management.device_simulators.storage import Storage
 from home_energy_management.device_simulators.gateway import Gateway
+from home_energy_management.device_simulators.heating import Heating, TempSensor
 from home_energy_management.device_simulators.photovoltaic import AbstractPV
 from home_energy_management.device_simulators.simple_device import SimpleDevice
+from home_energy_management.device_simulators.storage import Storage
 from sqlalchemy.cyextension.util import Mapping
 
 log_handler = logging.FileHandler(f"log/{os.getpid()}/simulation.log")
@@ -22,6 +22,7 @@ logger.addHandler(log_handler)
 logger.setLevel(logging.INFO)
 
 class SimulationRunner:
+    start_date: datetime
     sem: metersim.Metersim
     speedup: int
     scenario_dir: str
@@ -40,6 +41,7 @@ class SimulationRunner:
 
     def __init__(
             self,
+            start_date: datetime,
             pv: AbstractPV,
             storage: Storage,
             consumption_device: SimpleDevice,
@@ -50,6 +52,7 @@ class SimulationRunner:
             speedup: int,
             scenario_dir: str,
     ):
+        self.start_date = start_date
         self.pv = pv
         self.consumption_device = consumption_device
         self.storage = storage
@@ -99,7 +102,7 @@ class SimulationRunner:
         energy = self.sem.get_energy_total()
 
         logger.info("\x1B[2J\x1B[H")
-        logger.info(f"{timedelta(seconds=now)}")
+        logger.info(f"{self.start_date + timedelta(seconds=now)}")
         logger.info(
             f"Smart Energy Meter:"
             f"\n\t- Current (A): {round(vector.i[0].real, 2)}"
@@ -115,7 +118,7 @@ class SimulationRunner:
             logger.info(f"Electric Vehicle:")
         for ev_id, electric_vehicle in self.electric_vehicle_per_id.items():
             logger.info(
-                f"\n\t- ID: {ev_id}"
+                f"\t- ID: {ev_id}"
                 f"\n\t\t- Is available: {electric_vehicle.get_info()['is_available']}"
                 f"\n\t\t- Driving power (kW): {round(electric_vehicle.get_info()['driving_power'], 2)}"
                 f"\n\t\t- Current (A): {round(electric_vehicle.current[0].real, 2)}"
