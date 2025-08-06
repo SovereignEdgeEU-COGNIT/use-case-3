@@ -6,6 +6,7 @@ import time
 from dataclasses import dataclass, astuple
 from datetime import datetime, timedelta
 from typing import Any, Callable, Mapping
+from zoneinfo import ZoneInfo
 
 import phoenixsystems.sem.metersim as metersim
 from cognit import device_runtime
@@ -190,6 +191,7 @@ class UserApp:
     def update_predict_algo_input(self, now: float) -> AlgoPredictParams:
         self.last_algo_run = now
         next_timestamp = self.start_date + timedelta(seconds=self.metrology.get_uptime() + self.cycle_time)
+        next_timestamp_utc = next_timestamp.astimezone(ZoneInfo('UTC')).replace(tzinfo=None)
 
         storage_parameters = self.energy_storage.get_info()
         ev_parameters_per_id = {}
@@ -209,7 +211,7 @@ class UserApp:
         self.last_ev_battery_charge_level = ev_parameters["curr_charge_level"]
 
         algo_input = AlgoPredictParams(
-            next_timestamp.timestamp(),
+            next_timestamp_utc.timestamp(),
             json.dumps(self.s3_parameters),
             json.dumps(self.besmart_parameters),
             json.dumps(self.model_parameters),
@@ -223,9 +225,10 @@ class UserApp:
     def update_training_algo_input(self, now: float) -> AlgoTrainParams:
         self.last_algo_run = now
         last_timestamp = self.start_date + timedelta(seconds=self.metrology.get_uptime() - self.cycle_time)
-        first_timestamp = last_timestamp - timedelta(days=self.train_parameters["history_timedelta_days"])
-        self.besmart_parameters["since"] = first_timestamp.timestamp()
-        self.besmart_parameters["till"] = last_timestamp.timestamp()
+        last_timestamp_utc = last_timestamp.astimezone(ZoneInfo('UTC')).replace(tzinfo=None)
+        first_timestamp_utc = last_timestamp_utc - timedelta(days=self.train_parameters["history_timedelta_days"])
+        self.besmart_parameters["since"] = first_timestamp_utc.timestamp()
+        self.besmart_parameters["till"] = last_timestamp_utc.timestamp()
         ev_parameters_per_id = {}
         for ev_id, electric_vehicle in self.electric_vehicle_per_id.items():
             ev_parameters_per_id[ev_id] = electric_vehicle.get_info()
@@ -294,7 +297,7 @@ class UserApp:
         model_parameters = json.loads(algo_input.home_model_parameters)
         self.app_logger.info(
             f"Model parameters: \n\t- heat capacity (J/K): {model_parameters['heat_capacity']}, "
-            f"\n\t- heating delta temperature (K): {model_parameters['heating_delta_temperature']}, "
+            f"\n\t- heating temperature window (K): {model_parameters['temp_window']}, "
             f"\n\t- heating coefficient: {model_parameters['heating_coefficient']}, "
             f"\n\t- heat loss coefficient (W/K): {model_parameters['heat_loss_coefficient']},"
             f"\n\t- minimal temperature setting (°C): {model_parameters['min_temp_setting']},"

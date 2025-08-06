@@ -6,7 +6,7 @@ import subprocess
 import sys
 import textwrap
 from datetime import datetime
-
+from zoneinfo import ZoneInfo
 
 subprocess.call(["mkdir", "-p", "log"])
 subprocess.call(["mkdir", "-p", f"log/{os.getpid()}"])
@@ -24,14 +24,14 @@ from home_energy_management.device_simulators.electric_vehicle import (
 )
 from home_energy_management.device_simulators.heating import (
     Heating,
-    ScheduledTempSensor,
     LiveTempSensor,
     LiveHeatingPreferences,
     ScheduledHeatingPreferences,
 )
-from home_energy_management.device_simulators.photovoltaic import LivePV, ScheduledPV
-from home_energy_management.device_simulators.simple_device import SimpleLiveDevice, SimpleScheduledDevice
+from home_energy_management.device_simulators.photovoltaic import LivePV
+from home_energy_management.device_simulators.simple_device import SimpleLiveDevice
 from home_energy_management.device_simulators.storage import Storage
+from home_energy_management.device_simulators.utils import prepare_device_simulator_from_data
 
 from simulation_runner import SimulationRunner
 from user_app import UserApp
@@ -119,9 +119,7 @@ if cmd_args.scenario is not None:
     scenario_spec.loader.exec_module(scenario)
 
     START_DATE = scenario.START_DATE
-    TEMP_OUTSIDE_CONFIG = scenario.TEMP_OUTSIDE_CONFIG
-    PV_CONFIG = scenario.PV_CONFIG
-    CONSUMPTION_CONFIG = scenario.CONSUMPTION_CONFIG
+    STOP_DATE = scenario.STOP_DATE
     HEATING_PREFERENCES = scenario.HEATING_PREFERENCES
     EV_POWER_CONFIG = scenario.EV_POWER_CONFIG
     LOOP = scenario.LOOP
@@ -162,9 +160,12 @@ if cmd_args.live:
     other_devices.append(*ev_departure_plans.values())
 else:
     start_date = datetime.fromisoformat(START_DATE)
-    temp_outside_sensor = ScheduledTempSensor(TEMP_OUTSIDE_CONFIG, LOOP)
-    pv = ScheduledPV(PV_CONFIG, LOOP)
-    consumption = SimpleScheduledDevice(CONSUMPTION_CONFIG, LOOP)
+    stop_date = datetime.fromisoformat(STOP_DATE)
+    besmart_parameters["since"] = start_date.astimezone(ZoneInfo('UTC')).replace(tzinfo=None).timestamp()
+    besmart_parameters["till"] = stop_date.astimezone(ZoneInfo('UTC')).replace(tzinfo=None).timestamp()
+    consumption = prepare_device_simulator_from_data(besmart_parameters, "energy_consumption")
+    temp_outside_sensor = prepare_device_simulator_from_data(besmart_parameters, "temperature")
+    pv = prepare_device_simulator_from_data(besmart_parameters, "pv_generation")
     heating_preferences = ScheduledHeatingPreferences(HEATING_PREFERENCES, LOOP)
     ev_driving = {}
     ev_departure_plans = {}
