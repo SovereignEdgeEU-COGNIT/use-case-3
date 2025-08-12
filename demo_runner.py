@@ -1,12 +1,10 @@
 import argparse
-import importlib.util
 import json
 import os
 import subprocess
 import sys
 import textwrap
-from datetime import datetime
-from zoneinfo import ZoneInfo
+from datetime import datetime, timedelta
 
 subprocess.call(["mkdir", "-p", "log"])
 subprocess.call(["mkdir", "-p", f"log/{os.getpid()}"])
@@ -49,8 +47,12 @@ parser.add_argument(
     help="enable cognit edge nodes for running decision algorithm",
 )
 parser.add_argument(
-    "--scenario",
-    help="provide scenario file",
+    "--start_date",
+    help="start date of simulation in format \"YYYY-MM-DD\"",
+)
+parser.add_argument(
+    "--num_simulation_days",
+    help="number of days of simulation",
 )
 parser.add_argument(
     "--algorithm_version",
@@ -71,58 +73,49 @@ parser.add_argument(
 
 cmd_args = parser.parse_args()
 
-if not cmd_args.live and not cmd_args.scenario:
-    print(
-        "\nError when parsing arguments",
-        "\nProvide scenario or use live mode",
-    )
-    parser.print_help()
-    sys.exit(1)
-
-if cmd_args.live and cmd_args.scenario:
-    print(
-        "\nError when parsing arguments",
-        "\nEither provide scenario or use live mode",
-    )
-    parser.print_help()
-    sys.exit(1)
-
-
 with open('scenario/config.json', 'r') as f:
     config = json.load(f)
 
-algorithm_version = config["ALGORITHM_VERSION"]
+start_date = datetime.fromisoformat(config["START_DATE"])
+num_simulation_days = timedelta(days=config["NUM_SIMULATION_DAYS"])
 speedup = config["SPEEDUP"]
-userapp_cycle = config["USER_APP_CYCLE_LENGTH"]
-num_cycles_retrain = config["NUM_CYCLES_RETRAIN"]
-initial_state = config["INITIAL_STATE"]
-storage_config = config["STORAGE_CONFIG"]
-ev_config = config["EV_CONFIG"]
-heating_config = config["HEATING_CONFIG"]
-model_parameters = config["MODEL_PARAMETERS"]
-model_parameters.update(heating_config)
-besmart_parameters = config["BESMART_PARAMETERS"]
-s3_parameters = config["S3_PARAMETERS"]
-train_parameters = config["TRAIN_PARAMETERS"]
-user_preferences = config["USER_PREFERENCES"]
+sem_id = config["SEM_ID"]
 reqs_init = config["REQS_INIT"]
+besmart_access_parameters = config["BESMART_PARAMETERS"]
+s3_parameters = config["S3_PARAMETERS"]
 
 
-# Load the scenario
-if cmd_args.scenario is not None:
-    scenario_spec = importlib.util.spec_from_file_location("scenario", cmd_args.scenario)
-    if scenario_spec is None:
-        print("Error when reading scenario!")
-        sys.exit(1)
+if cmd_args.start_date is not None:
+    start_date = datetime.fromisoformat(cmd_args.start_date)
 
-    scenario = importlib.util.module_from_spec(scenario_spec)
-    scenario_spec.loader.exec_module(scenario)
+if cmd_args.num_simulation_days is not None:
+    num_simulation_days = cmd_args.num_simulation_days
 
-    START_DATE = scenario.START_DATE
-    STOP_DATE = scenario.STOP_DATE
-    HEATING_PREFERENCES = scenario.HEATING_PREFERENCES
-    EV_POWER_CONFIG = scenario.EV_POWER_CONFIG
-    LOOP = scenario.LOOP
+stop_date = start_date + num_simulation_days
+
+if cmd_args.speedup is not None and cmd_args.cycle is not None:
+    speedup = int(cmd_args.speedup)
+    userapp_cycle = int(cmd_args.cycle)
+
+
+with open(f'scenario/{sem_id}.json', 'r') as f:
+    sem_config = json.load(f)
+
+algorithm_version = sem_config["ALGORITHM_VERSION"]
+userapp_cycle = sem_config["USER_APP_CYCLE_LENGTH"]
+num_cycles_retrain = sem_config["NUM_CYCLES_RETRAIN"]
+initial_state = sem_config["INITIAL_STATE"]
+storage_config = sem_config["STORAGE_CONFIG"]
+ev_config = sem_config["EV_CONFIG"]
+heating_config = sem_config["HEATING_CONFIG"]
+model_parameters = sem_config["MODEL_PARAMETERS"]
+model_parameters.update(heating_config)
+train_parameters = sem_config["TRAIN_PARAMETERS"]
+user_preferences = sem_config["USER_PREFERENCES"]
+besmart_parameters = sem_config["BESMART_PARAMETERS"]
+
+s3_parameters["model_filename"] = s3_parameters["model_filename"].format(sem_id)
+besmart_parameters.update(besmart_access_parameters)
 
 
 if cmd_args.algorithm_version is not None:
@@ -147,7 +140,6 @@ if cmd_args.num_cycles_retrain is not None:
 other_devices = []
 
 if cmd_args.live:
-    start_date = datetime.fromisoformat(initial_state["start_date"])
     temp_outside_sensor = LiveTempSensor(initial_state["live_temp_outside"])
     pv = LivePV()
     consumption = SimpleLiveDevice()
@@ -159,19 +151,17 @@ if cmd_args.live:
         ev_departure_plans[ev_id] = LiveEVDeparturePlans(initial_state["ev_departure_time"])
     other_devices.append(*ev_departure_plans.values())
 else:
-    start_date = datetime.fromisoformat(START_DATE)
-    stop_date = datetime.fromisoformat(STOP_DATE)
-    besmart_parameters["since"] = start_date.astimezone(ZoneInfo('UTC')).replace(tzinfo=None).timestamp()
-    besmart_parameters["till"] = stop_date.astimezone(ZoneInfo('UTC')).replace(tzinfo=None).timestamp()
+    besmart_parameters["since"] = start_date.timestamp()
+    besmart_parameters["till"] = stop_date.timestamp()
     consumption = prepare_device_simulator_from_data(besmart_parameters, "energy_consumption")
     temp_outside_sensor = prepare_device_simulator_from_data(besmart_parameters, "temperature")
     pv = prepare_device_simulator_from_data(besmart_parameters, "pv_generation")
-    heating_preferences = ScheduledHeatingPreferences(HEATING_PREFERENCES, LOOP)
+    heating_preferences = ScheduledHeatingPreferences(user_preferences["pref_temp_schedule"])
     ev_driving = {}
     ev_departure_plans = {}
-    for ev_id, ev_power_config in EV_POWER_CONFIG.items():
-        ev_driving[ev_id] = ScheduledEVDriving(ev_power_config, LOOP)
-        ev_departure_plans[ev_id] = ScheduledEVDeparturePlans(ev_power_config, LOOP)
+    for ev_id, ev_power_config in user_preferences["ev_driving_schedule"].items():
+        ev_driving[ev_id] = ScheduledEVDriving(ev_power_config)
+        ev_departure_plans[ev_id] = ScheduledEVDeparturePlans(ev_power_config)
     other_devices.extend([heating_preferences, *ev_driving.values(), *ev_departure_plans.values()])
 
 
@@ -321,10 +311,6 @@ def print_help():
             "performs an unscheduled call of decision algorithm",
         ),
         (
-            "set_slr_config(perc: int)",
-            "updates Serverless Runtime scheduling preferences in terms of green energy usage",
-        ),
-        (
             "finish()",
             "finishes the simulation, deletes Serverless Runtime if present",
         ),
@@ -407,7 +393,9 @@ def set_ev_driving_power(ev_name: str, driving_power: float):
     if not cmd_args.live:
         print("Error: Live mode disabled")
         return
-    ev_driving[ev_name].set_driving_power(driving_power)
+    ev_driving_schedule = LiveEVDriving(driving_power)
+    ev = simulation.get_ev(ev_name)
+    ev.set_getter_of_driving_power(ev_driving_schedule)
 
 
 def set_ev_departure_time(ev_name: str, ev_departure_time: str):
@@ -423,13 +411,6 @@ def set_speedup(speedup: int):
         return
     simulation.set_speedup(speedup)
     app.set_speedup(speedup)
-
-
-def set_slr_config(perc: int):
-    if not cmd_args.offload:
-        print("Error: Cognit SLR not in use")
-        return
-    app.update_slr_preferences(perc)
 
 
 def finish():
@@ -454,7 +435,7 @@ if cmd_args.live:
         "\n  Consumption current (A): 0",
         "\n  PV current (A): 0",
         f"\n  EV driving power (kW): {initial_state['ev_driving_power']}",
-        "\n  EV departure time planned: 08:00",
+        f"\n  EV departure time planned: {initial_state['ev_departure_time']}",
     )
 simulation.start()
 app.start()

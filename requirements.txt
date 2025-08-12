@@ -1,3 +1,3 @@
 git+https://github.com/SovereignEdgeEU-COGNIT/use-case-3-sem-simulator.git@v1.0.0#egg=phoenixsystems-sem&subdirectory=python_api
-git+https://github.com/SovereignEdgeEU-COGNIT/use-case-3-home-energy-management.git@v2.0.0
+git+https://github.com/SovereignEdgeEU-COGNIT/use-case-3-home-energy-management.git@v2.1.0
 git+https://github.com/SovereignEdgeEU-COGNIT/device-runtime-py.git@release-cognit-3.0

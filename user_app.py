@@ -6,10 +6,9 @@ import time
 from dataclasses import dataclass, astuple
 from datetime import datetime, timedelta
 from typing import Any, Callable, Mapping
-from zoneinfo import ZoneInfo
 
 import phoenixsystems.sem.metersim as metersim
-from cognit import device_runtime
+from cognit.device_runtime import DeviceRuntime
 from home_energy_management.device_simulators.device_utils import DeviceUserApi
 from home_energy_management.device_simulators.heating import HeatingPreferences
 from home_energy_management.device_simulators.electric_vehicle import EVDeparturePlans
@@ -40,7 +39,7 @@ class AlgoTrainParams:
 
 class UserApp:
     start_date: datetime
-    runtime: device_runtime.DeviceRuntime  # Cognit Serverless Runtime
+    device_runtime: DeviceRuntime  # Cognit Serverless Runtime
     metrology: metersim.Metersim  # Metrology
     heating_user_preferences: HeatingPreferences
     ev_departure_plans: dict[str, EVDeparturePlans]
@@ -73,6 +72,7 @@ class UserApp:
     cond: threading.Condition
     app_logger: logging.Logger
     cognit_logger: logging.Logger
+    global_logger: logging.Logger = None
 
     # Registers
     last_algo_run: float = 0.0
@@ -165,13 +165,16 @@ class UserApp:
         handler.setFormatter(formatter)
         self.global_logger.addHandler(handler)
 
-        self.runtime = device_runtime.DeviceRuntime("cognit.yml")
-        self.runtime.init(reqs_init)
+        self.device_runtime = DeviceRuntime("cognit.yml")
+        self.device_runtime.init(reqs_init)
 
         self.cognit_logger.info("Runtime should be ready now!")
 
     def set_heating_user_preferences(self, pref: HeatingPreferences):
         self.heating_user_preferences = pref
+
+    def get_ev_departure_plans(self):
+        return self.ev_departure_plans
 
     def offload_now(self):
         with self.cond:
@@ -183,6 +186,9 @@ class UserApp:
             self.cycle_time = cycle
             self.cond.notify_all()
 
+    def get_cycle_length(self):
+        return self.cycle_time
+
     def set_speedup(self, speedup: int):
         with self.cond:
             self.speedup = speedup
@@ -191,7 +197,6 @@ class UserApp:
     def update_predict_algo_input(self, now: float) -> AlgoPredictParams:
         self.last_algo_run = now
         next_timestamp = self.start_date + timedelta(seconds=self.metrology.get_uptime() + self.cycle_time)
-        next_timestamp_utc = next_timestamp.astimezone(ZoneInfo('UTC')).replace(tzinfo=None)
 
         storage_parameters = self.energy_storage.get_info()
         ev_parameters_per_id = {}
@@ -211,7 +216,7 @@ class UserApp:
         self.last_ev_battery_charge_level = ev_parameters["curr_charge_level"]
 
         algo_input = AlgoPredictParams(
-            next_timestamp_utc.timestamp(),
+            next_timestamp.timestamp(),
             json.dumps(self.s3_parameters),
             json.dumps(self.besmart_parameters),
             json.dumps(self.model_parameters),
@@ -225,10 +230,9 @@ class UserApp:
     def update_training_algo_input(self, now: float) -> AlgoTrainParams:
         self.last_algo_run = now
         last_timestamp = self.start_date + timedelta(seconds=self.metrology.get_uptime() - self.cycle_time)
-        last_timestamp_utc = last_timestamp.astimezone(ZoneInfo('UTC')).replace(tzinfo=None)
-        first_timestamp_utc = last_timestamp_utc - timedelta(days=self.train_parameters["history_timedelta_days"])
-        self.besmart_parameters["since"] = first_timestamp_utc.timestamp()
-        self.besmart_parameters["till"] = last_timestamp_utc.timestamp()
+        first_timestamp = last_timestamp - timedelta(days=self.train_parameters["history_timedelta_days"])
+        self.besmart_parameters["since"] = first_timestamp.timestamp()
+        self.besmart_parameters["till"] = last_timestamp.timestamp()
         ev_parameters_per_id = {}
         for ev_id, electric_vehicle in self.electric_vehicle_per_id.items():
             ev_parameters_per_id[ev_id] = electric_vehicle.get_info()
@@ -260,20 +264,19 @@ class UserApp:
         self.heating.set_params({"optimal_temp": conf_temp,})
 
     def run_algo(self, algo_function: Callable, algo_input: AlgoPredictParams | AlgoTrainParams) -> Any:
-        res = None
         if not self.use_cognit:
             res = algo_function(*astuple(algo_input))
         else:
             try:
-                ret = self.runtime.call(algo_function, *astuple(algo_input))
+                ret = self.device_runtime.call(algo_function, *astuple(algo_input))
                 res = ret.res
                 self.app_logger.info(f"\nRuntime result: {res}")
                 if ret.err:
                     self.app_logger.error(f"\nError during offloading: {ret.err}")
                 self.global_logger.info("Offload OK")
             except:
-                raise
                 self.global_logger.error("Offload ERROR")
+                raise
         return res
 
     def start(self):
@@ -356,6 +359,7 @@ class UserApp:
         end_time = time.time()
 
         if algo_res is not None:
+            self.model_parameters["state_range"] = json.loads(algo_res)
             self.app_logger.info(f"\nTraining completed in: {(end_time - start_time):.2f} seconds")
             self.app_logger.info(f"Model saved in s3 bucket")
         else:
