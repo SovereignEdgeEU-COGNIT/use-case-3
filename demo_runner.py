@@ -52,11 +52,12 @@ parser.add_argument(
 )
 parser.add_argument(
     "--num_simulation_days",
-    help="number of days of simulation",
+    help="number of days of simulation data",
 )
 parser.add_argument(
-    "--algorithm_version",
-    help="version of decision algorithm; available options are: {\"baseline\", \"AI\"}",
+    "--use_baseline_algorithm",
+    action="store_true",
+    help="disables usage of AI model for decision-making, uses baseline function instead",
 )
 parser.add_argument(
     "--speedup",
@@ -101,7 +102,6 @@ if cmd_args.speedup is not None and cmd_args.cycle is not None:
 with open(f'scenario/{sem_id}.json', 'r') as f:
     sem_config = json.load(f)
 
-algorithm_version = sem_config["ALGORITHM_VERSION"]
 userapp_cycle = sem_config["USER_APP_CYCLE_LENGTH"]
 num_cycles_retrain = sem_config["NUM_CYCLES_RETRAIN"]
 initial_state = sem_config["INITIAL_STATE"]
@@ -118,15 +118,7 @@ s3_parameters["model_filename"] = s3_parameters["model_filename"].format(sem_id)
 besmart_parameters.update(besmart_access_parameters)
 
 
-if cmd_args.algorithm_version is not None:
-    if cmd_args.algorithm_version not in ["baseline", "AI"]:
-        print(
-            "\nError when parsing arguments",
-            "\nAvailable options for algorithm_version are: {\"baseline\", \"AI\"}",
-        )
-        parser.print_help()
-        sys.exit(1)
-    algorithm_version = cmd_args.algorithm_version
+use_ai_algorithm = ~cmd_args.use_baseline_algorithm
 
 if cmd_args.speedup is not None and cmd_args.cycle is not None:
     speedup = int(cmd_args.speedup)
@@ -237,13 +229,13 @@ print("Initializing User Application")
 app = UserApp(
     start_date=start_date,
     metrology=simulation.sem,
-    decision_algo=baseline_decision_function if algorithm_version == "baseline" else ai_decision_function,
+    decision_algo=ai_decision_function if use_ai_algorithm else baseline_decision_function,
     model_parameters=model_parameters,
     besmart_parameters=besmart_parameters,
-    use_model=algorithm_version == "AI",
-    training_algo=training_function if algorithm_version == "AI" else None,
-    s3_parameters=s3_parameters if algorithm_version == "AI" else None,
-    train_parameters=train_parameters if algorithm_version == "AI" else None,
+    use_model=use_ai_algorithm,
+    training_algo=training_function if use_ai_algorithm else None,
+    s3_parameters=s3_parameters if use_ai_algorithm else None,
+    train_parameters=train_parameters if use_ai_algorithm else None,
     user_preferences=user_preferences,
     pv=pv,
     electric_vehicle_per_id=electric_vehicle_per_id,
@@ -254,7 +246,7 @@ app = UserApp(
     cycle=userapp_cycle,
     num_cycles_retrain=num_cycles_retrain,
     use_cognit=cmd_args.offload,
-    reqs_init=reqs_init[algorithm_version],
+    reqs_init=reqs_init["AI" if use_ai_algorithm else "baseline"],
     heating_user_preferences=heating_preferences,
     ev_departure_plans=ev_departure_plans,
 )
@@ -327,7 +319,7 @@ def print_help():
         ),
         (
             "set_consumption(current: float)",
-            "sets auto-consumption (use positive values for consumption)",
+            "sets consumption of uncontrolled devices (use positive values for consumption)",
         ),
         (
             "set_temp_outside(temp: float)",

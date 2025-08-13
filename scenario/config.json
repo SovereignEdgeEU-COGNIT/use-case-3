@@ -7,34 +7,61 @@
     "REQS_INIT": {
         "baseline":
             {
-                "FLAVOUR": "Energy",
-                "GEOLOCATION": {
-                    "latitude": 43.05,
-                    "longitude": -2.53
+                "flavour": "Energy",
+                "max_latency": 100,
+                "min_renewable": 85,
+                "max_fnexec_time": 3.5,
+                "geolocation": {
+                    "latitude": 40.4168,
+                    "longitude": -3.7038
                 }
             },
         "AI":
             {
-                "FLAVOUR": "EnergyTorch",
-                "GEOLOCATION": {
-                    "latitude": 43.05,
-                    "longitude": -2.53
+                "flavour": "EnergyTorch",
+                "max_latency": 100,
+                "min_renewable": 85,
+                "max_fnexec_time": 3.5,
+                "geolocation": {
+                    "latitude": 40.4168,
+                    "longitude": -3.7038
                 }
             }
     },
 
     "S3_PARAMETERS": {
-        "endpoint_url": "https://s3.sovereignedge.eu/",
-        "bucket_name": "uc3-test-bucket",
-        "model_filename": "files/onnx_model_v2.1.0_sem{}.onnx",
-        "access_key_id": "eXuxY2Gt4bI8PTScQ9gz",
-        "secret_access_key": "RtomdwwpoN7tkQe6ZZSPZTGScvQ0GtEwVhObreo4"
+        "endpoint_url": "",
+        "bucket_name": "",
+        "model_filename": "",
+        "access_key_id": "",
+        "secret_access_key": ""
     },
 
     "BESMART_PARAMETERS": {
-        "workspace_key": "wubbalubbadubdub",
-        "login": "cognit_demo",
-        "password": "CognitDemo2025!",
+        "workspace_key": "",
+        "login": "",
+        "password": "",
         "temperature_moid": 139
+    },
+
+    "TRAIN_PARAMETERS": {
+        "history_timedelta_days": 90,
+        "num_episodes": 100,
+        "critic_lr": 0.001,
+        "actor_lr": 0.001,
+        "gamma": 0.2,
+        "lambda_": 0.95,
+        "num_epochs": 10,
+        "eps_clip": 0.2,
+        "min_action_std": 0.1,
+        "action_std_decay_freq": 0.02,
+        "action_std_decay_rate": 0.01,
+        "update_epoch": 10,
+        "action_std_init": 0.6,
+        "batch_size": 64,
+        "energy_reward_coeff": 0.3,
+        "temp_reward_coeff": 2.0,
+        "storage_reward_coeff": 0.8,
+        "ev_reward_coeff": 0.8
     }
 }
