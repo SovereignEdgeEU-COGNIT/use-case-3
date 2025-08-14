@@ -2,7 +2,6 @@ import argparse
 import json
 import os
 import subprocess
-import sys
 import textwrap
 from datetime import datetime, timedelta
 
@@ -74,7 +73,7 @@ parser.add_argument(
 
 cmd_args = parser.parse_args()
 
-with open('scenario/config.json', 'r') as f:
+with open('scenario/config_local.json', 'r') as f:
     config = json.load(f)
 
 start_date = datetime.fromisoformat(config["START_DATE"])
@@ -84,6 +83,7 @@ sem_id = config["SEM_ID"]
 reqs_init = config["REQS_INIT"]
 besmart_access_parameters = config["BESMART_PARAMETERS"]
 s3_parameters = config["S3_PARAMETERS"]
+train_parameters = config["TRAIN_PARAMETERS"]
 
 
 if cmd_args.start_date is not None:
@@ -110,7 +110,6 @@ ev_config = sem_config["EV_CONFIG"]
 heating_config = sem_config["HEATING_CONFIG"]
 model_parameters = sem_config["MODEL_PARAMETERS"]
 model_parameters.update(heating_config)
-train_parameters = sem_config["TRAIN_PARAMETERS"]
 user_preferences = sem_config["USER_PREFERENCES"]
 besmart_parameters = sem_config["BESMART_PARAMETERS"]
 
@@ -418,8 +417,9 @@ print(
     "\nConfiguration:\n",
     f"\n  Speedup: {speedup}",
     f"\n  User app cycle length: {userapp_cycle} seconds",
-    "\n  Cognit renewable energy: 50%",
 )
+if cmd_args.offload:
+    print(f"  Cognit renewable energy: {reqs_init['AI' if use_ai_algorithm else 'baseline']['MIN_ENERGY_RENEWABLE_USAGE']}%")
 if cmd_args.live:
     print(
         f"\n  Temperature outside (°C): {initial_state['live_temp_outside']}",

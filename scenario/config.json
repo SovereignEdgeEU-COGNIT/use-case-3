@@ -7,22 +7,22 @@
     "REQS_INIT": {
         "baseline":
             {
-                "flavour": "Energy",
-                "max_latency": 100,
-                "min_renewable": 85,
-                "max_fnexec_time": 3.5,
-                "geolocation": {
+                "FLAVOUR": "Energy",
+                "MAX_LATENCY": 100,
+                "MIN_ENERGY_RENEWABLE_USAGE": 85,
+                "MAX_FUNCTION_EXECUTION_TIME": 3.5,
+                "GEOLOCATION": {
                     "latitude": 40.4168,
                     "longitude": -3.7038
                 }
             },
         "AI":
             {
-                "flavour": "EnergyTorch",
-                "max_latency": 100,
-                "min_renewable": 85,
-                "max_fnexec_time": 3.5,
-                "geolocation": {
+                "FLAVOUR": "EnergyTorch",
+                "MAX_LATENCY": 100,
+                "MIN_ENERGY_RENEWABLE_USAGE": 85,
+                "MAX_FUNCTION_EXECUTION_TIME": 3.5,
+                "GEOLOCATION": {
                     "latitude": 40.4168,
                     "longitude": -3.7038
                 }
@@ -46,7 +46,7 @@
 
     "TRAIN_PARAMETERS": {
         "history_timedelta_days": 90,
-        "num_episodes": 100,
+        "num_episodes": 1000,
         "critic_lr": 0.001,
         "actor_lr": 0.001,
         "gamma": 0.2,
