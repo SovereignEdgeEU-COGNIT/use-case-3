@@ -1,7 +1,7 @@
 import subprocess
 
 
-COMMAND = ["python3.10", "demo_runner.py", "--offload", "--scenario", "scenario/scenario_autumn.py"]
+COMMAND = ["python3.10", "demo_runner.py", "--offload", "--start_date", "2024-09-23"]
 
 processes = []
 

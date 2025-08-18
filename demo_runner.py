@@ -1,11 +1,9 @@
 import argparse
-import importlib.util
+import json
 import os
 import subprocess
-import sys
 import textwrap
-from datetime import datetime
-
+from datetime import datetime, timedelta
 
 subprocess.call(["mkdir", "-p", "log"])
 subprocess.call(["mkdir", "-p", f"log/{os.getpid()}"])
@@ -22,38 +20,18 @@ from home_energy_management.device_simulators.electric_vehicle import (
     ScheduledEVDeparturePlans
 )
 from home_energy_management.device_simulators.heating import (
-    RoomHeating,
-    ScheduledTempSensor,
+    Heating,
     LiveTempSensor,
     LiveHeatingPreferences,
     ScheduledHeatingPreferences,
 )
-from home_energy_management.device_simulators.photovoltaic import LivePV, ScheduledPV
-from home_energy_management.device_simulators.simple_device import SimpleLiveDevice, SimpleScheduledDevice
+from home_energy_management.device_simulators.photovoltaic import LivePV
+from home_energy_management.device_simulators.simple_device import SimpleLiveDevice
 from home_energy_management.device_simulators.storage import Storage
+from home_energy_management.device_simulators.utils import prepare_device_simulator_from_data
 
 from simulation_runner import SimulationRunner
-from scenario.config import (
-    SPEEDUP,
-    USER_APP_CYCLE_LENGTH,
-    NUM_CYCLES_RETRAIN,
-    ALGORITHM_VERSION,
-    REQS_INIT,
-    MODEL_PARAMETERS,
-    TRAIN_PARAMETERS,
-    STORAGE_CONFIG,
-    EV_CONFIG,
-    HEATING_CONFIG,
-    INITIAL_STATE,
-    TRAINED_MODEL_PATH,
-    PV_PRODUCTION_REAL_PATH,
-    PV_PRODUCTION_PRED_PATH,
-    UNCONTROLLED_CONSUMPTION_REAL_PATH,
-    UNCONTROLLED_CONSUMPTION_PRED_PATH,
-    TEMP_OUTSIDE_REAL_PATH,
-    TEMP_OUTSIDE_PRED_PATH,
-)
-from user_app import UserApp, TimeSeries
+from user_app import UserApp
 
 # Parse the arguments
 parser = argparse.ArgumentParser()
@@ -68,12 +46,17 @@ parser.add_argument(
     help="enable cognit edge nodes for running decision algorithm",
 )
 parser.add_argument(
-    "--scenario",
-    help="provide scenario file",
+    "--start_date",
+    help="start date of simulation in format \"YYYY-MM-DD\"",
 )
 parser.add_argument(
-    "--algorithm_version",
-    help="version of decision algorithm; available options are: {\"baseline\", \"AI\"}",
+    "--num_simulation_days",
+    help="number of days of simulation data",
+)
+parser.add_argument(
+    "--use_baseline_algorithm",
+    action="store_true",
+    help="disables usage of AI model for decision-making, uses baseline function instead",
 )
 parser.add_argument(
     "--speedup",
@@ -90,98 +73,98 @@ parser.add_argument(
 
 cmd_args = parser.parse_args()
 
-if not cmd_args.live and not cmd_args.scenario:
-    print(
-        "\nError when parsing arguments",
-        "\nProvide scenario or use live mode",
-    )
-    parser.print_help()
-    sys.exit(1)
+with open('scenario/config.json', 'r') as f:
+    config = json.load(f)
 
-if cmd_args.live and cmd_args.scenario:
-    print(
-        "\nError when parsing arguments",
-        "\nEither provide scenario or use live mode",
-    )
-    parser.print_help()
-    sys.exit(1)
+start_date = datetime.fromisoformat(config["START_DATE"])
+num_simulation_days = timedelta(days=config["NUM_SIMULATION_DAYS"])
+speedup = config["SPEEDUP"]
+sem_id = config["SEM_ID"]
+reqs_init = config["REQS_INIT"]
+besmart_access_parameters = config["BESMART_PARAMETERS"]
+s3_parameters = config["S3_PARAMETERS"]
+train_parameters = config["TRAIN_PARAMETERS"]
 
 
-# Load the scenario
-if cmd_args.scenario is not None:
-    scenario_spec = importlib.util.spec_from_file_location("scenario", cmd_args.scenario)
-    if scenario_spec is None:
-        print("Error when reading scenario!")
-        sys.exit(1)
+if cmd_args.start_date is not None:
+    start_date = datetime.fromisoformat(cmd_args.start_date)
 
-    scenario = importlib.util.module_from_spec(scenario_spec)
-    scenario_spec.loader.exec_module(scenario)
+if cmd_args.num_simulation_days is not None:
+    num_simulation_days = cmd_args.num_simulation_days
 
-    START_DATE = scenario.START_DATE
-    TEMP_OUTSIDE_CONFIG = scenario.TEMP_OUTSIDE_CONFIG
-    PV_CONFIG = scenario.PV_CONFIG
-    CONSUMPTION_CONFIG = scenario.CONSUMPTION_CONFIG
-    HEATING_PREFERENCES = scenario.HEATING_PREFERENCES
-    EV_POWER_CONFIG = scenario.EV_POWER_CONFIG
-    LOOP = scenario.LOOP
-
-
-if cmd_args.algorithm_version is not None:
-    if cmd_args.algorithm_version not in ["baseline", "AI"]:
-        print(
-            "\nError when parsing arguments",
-            "\nAvailable options for algorithm_version are: {\"baseline\", \"AI\"}",
-        )
-        parser.print_help()
-        sys.exit(1)
-    algorithm_version = cmd_args.algorithm_version
-else:
-    algorithm_version = ALGORITHM_VERSION
+stop_date = start_date + num_simulation_days
 
 if cmd_args.speedup is not None and cmd_args.cycle is not None:
     speedup = int(cmd_args.speedup)
     userapp_cycle = int(cmd_args.cycle)
-else:
-    speedup = SPEEDUP
-    userapp_cycle = USER_APP_CYCLE_LENGTH
+
+
+with open(f'scenario/{sem_id}.json', 'r') as f:
+    sem_config = json.load(f)
+
+userapp_cycle = sem_config["USER_APP_CYCLE_LENGTH"]
+num_cycles_retrain = sem_config["NUM_CYCLES_RETRAIN"]
+initial_state = sem_config["INITIAL_STATE"]
+storage_config = sem_config["STORAGE_CONFIG"]
+ev_config = sem_config["EV_CONFIG"]
+heating_config = sem_config["HEATING_CONFIG"]
+model_parameters = sem_config["MODEL_PARAMETERS"]
+model_parameters.update(heating_config)
+user_preferences = sem_config["USER_PREFERENCES"]
+besmart_parameters = sem_config["BESMART_PARAMETERS"]
+
+s3_parameters["model_filename"] = s3_parameters["model_filename"].format(sem_id)
+besmart_parameters.update(besmart_access_parameters)
+
+
+use_ai_algorithm = ~cmd_args.use_baseline_algorithm
+
+if cmd_args.speedup is not None and cmd_args.cycle is not None:
+    speedup = int(cmd_args.speedup)
+    userapp_cycle = int(cmd_args.cycle)
 
 if cmd_args.num_cycles_retrain is not None:
     num_cycles_retrain = int(cmd_args.num_cycles_retrain)
-else:
-    num_cycles_retrain = NUM_CYCLES_RETRAIN
 
 
 # Initialize the devices
 other_devices = []
 
 if cmd_args.live:
-    start_date = datetime.fromisoformat(INITIAL_STATE["start_date"])
-    temp_outside_sensor = LiveTempSensor(INITIAL_STATE["live_temp_outside"])
+    temp_outside_sensor = LiveTempSensor(initial_state["live_temp_outside"])
     pv = LivePV()
     consumption = SimpleLiveDevice()
-    heating_preferences = LiveHeatingPreferences(INITIAL_STATE["heating_preferences"])
-    ev_driving = LiveEVDriving(INITIAL_STATE["ev_driving_power"])
-    ev_departure_plans = LiveEVDeparturePlans(INITIAL_STATE["ev_departure_time"])
-    other_devices.append(ev_departure_plans)
+    heating_preferences = LiveHeatingPreferences(initial_state["heating_preferences"])
+    ev_driving = {}
+    ev_departure_plans = {}
+    for ev_id, ev_initial_state in initial_state["ev_state"].items():
+        ev_driving[ev_id] = LiveEVDriving(initial_state["ev_driving_power"])
+        ev_departure_plans[ev_id] = LiveEVDeparturePlans(initial_state["ev_departure_time"])
+    other_devices.append(*ev_departure_plans.values())
 else:
-    start_date = datetime.fromisoformat(START_DATE)
-    temp_outside_sensor = ScheduledTempSensor(TEMP_OUTSIDE_CONFIG, LOOP)
-    pv = ScheduledPV(PV_CONFIG, LOOP)
-    consumption = SimpleScheduledDevice(CONSUMPTION_CONFIG, LOOP)
-    heating_preferences = ScheduledHeatingPreferences(HEATING_PREFERENCES, LOOP)
-    ev_driving = ScheduledEVDriving(EV_POWER_CONFIG, LOOP)
-    ev_departure_plans = ScheduledEVDeparturePlans(EV_POWER_CONFIG, LOOP)
-    other_devices.extend([heating_preferences, ev_driving, ev_departure_plans])
+    besmart_parameters["since"] = start_date.timestamp()
+    besmart_parameters["till"] = stop_date.timestamp()
+    consumption = prepare_device_simulator_from_data(besmart_parameters, "energy_consumption")
+    temp_outside_sensor = prepare_device_simulator_from_data(besmart_parameters, "temperature")
+    pv = prepare_device_simulator_from_data(besmart_parameters, "pv_generation")
+    heating_preferences = ScheduledHeatingPreferences(user_preferences["pref_temp_schedule"])
+    ev_driving = {}
+    ev_departure_plans = {}
+    for ev_id, ev_power_config in user_preferences["ev_driving_schedule"].items():
+        ev_driving[ev_id] = ScheduledEVDriving(ev_power_config)
+        ev_departure_plans[ev_id] = ScheduledEVDeparturePlans(ev_power_config)
+    other_devices.extend([heating_preferences, *ev_driving.values(), *ev_departure_plans.values()])
+
 
 storage = Storage(
-    max_power=STORAGE_CONFIG["max_power"],
-    max_capacity=STORAGE_CONFIG["max_capacity"],
-    min_charge_level=STORAGE_CONFIG["min_charge_level"],
-    charging_switch_level=STORAGE_CONFIG["charging_switch_level"],
-    efficiency=STORAGE_CONFIG["efficiency"],
-    energy_loss=STORAGE_CONFIG["energy_loss"],
+    max_power=storage_config["max_power"],
+    max_capacity=storage_config["max_capacity"],
+    min_charge_level=storage_config["min_charge_level"],
+    charging_switch_level=storage_config["charging_switch_level"],
+    efficiency=storage_config["efficiency"],
+    energy_loss=storage_config["energy_loss"],
     current=[0.0, 0.0, 0.0],
-    curr_capacity=INITIAL_STATE["storage_capacity"],
+    curr_capacity=initial_state["storage_capacity"],
     max_charge_rate=1.0,
     max_discharge_rate=1.0,
     operation_mode=2,
@@ -189,86 +172,82 @@ storage = Storage(
     voltage=[0.0, 0.0, 0.0],
 )
 
-electric_vehicle = ElectricVehicle(
-    max_power=EV_CONFIG["max_power"],
-    max_capacity=EV_CONFIG["max_capacity"],
-    min_charge_level=EV_CONFIG["min_charge_level"],
-    driving_charge_level=EV_CONFIG["driving_charge_level"],
-    charging_switch_level=EV_CONFIG["charging_switch_level"],
-    efficiency=EV_CONFIG["efficiency"],
-    energy_loss=EV_CONFIG["energy_loss"],
-    is_available=INITIAL_STATE["ev_driving_power"] == 0.0,
-    get_driving_power=ev_driving.get_driving_power,
-    current=[0, 0, 0],
-    curr_capacity=INITIAL_STATE["ev_battery_capacity"],
-    max_charge_rate=1.0,
-    max_discharge_rate=1.0,
-    operation_mode=0,
-    last_capacity_update=0,
-    voltage=[0, 0, 0],
-)
+electric_vehicle_per_id = {}
+for ev_id, ev_config_per_id in ev_config.items():
+    ev_initial_state = initial_state["ev_state"][ev_id]
+    electric_vehicle_per_id[ev_id] = ElectricVehicle(
+        max_power=ev_config_per_id["max_power"],
+        max_capacity=ev_config_per_id["max_capacity"],
+        min_charge_level=ev_config_per_id["min_charge_level"],
+        driving_charge_level=ev_config_per_id["driving_charge_level"],
+        charging_switch_level=ev_config_per_id["charging_switch_level"],
+        efficiency=ev_config_per_id["efficiency"],
+        energy_loss=ev_config_per_id["energy_loss"],
+        is_available=ev_initial_state["ev_driving_power"] == 0.0,
+        get_driving_power=ev_driving[ev_id].get_driving_power,
+        current=[0, 0, 0],
+        curr_capacity=ev_initial_state["ev_battery_capacity"],
+        max_charge_rate=1.0,
+        max_discharge_rate=1.0,
+        operation_mode=0,
+        last_capacity_update=0,
+        voltage=[0, 0, 0],
+    )
 
-room_heating = {
-    "room": RoomHeating(
-        heat_capacity=HEATING_CONFIG["room"]["heat_capacity"],
-        heating_coefficient=HEATING_CONFIG["room"]["heating_coefficient"],
-        heating_loss=HEATING_CONFIG["room"]["heating_loss"],
-        name="room",
-        temp_window=HEATING_CONFIG["room"]["temp_window"],
-        heating_devices_power=HEATING_CONFIG["room"]["heating_devices_power"],
-        curr_temp=INITIAL_STATE["curr_room_temp"],
-        is_device_switch_on=[False, False],
-        optimal_temp=INITIAL_STATE["heating_preferences"],
-        last_temp_update=0,
-        current=[0.0, 0.0, 0.0],
-        get_temp_outside=temp_outside_sensor.get_temp,
-    ),
-}
+heating = Heating(
+    heat_capacity=heating_config["heat_capacity"],
+    heating_coefficient=heating_config["heating_coefficient"],
+    heat_loss_coefficient=heating_config["heat_loss_coefficient"],
+    name="room",
+    temp_window=heating_config["temp_window"],
+    heating_devices_power=heating_config["heating_devices_power"],
+    curr_temp=initial_state["curr_room_temp"],
+    is_device_switch_on=[False, False],
+    optimal_temp=initial_state["heating_preferences"],
+    last_temp_update=0,
+    current=[0.0, 0.0, 0.0],
+    get_temp_outside=temp_outside_sensor.get_temp,
+)
 
 
 print("Initializing Simulation")
 simulation = SimulationRunner(
+    start_date=start_date,
     scenario_dir="scenario",
     pv=pv,
     storage=storage,
     consumption_device=consumption,
-    room_heating=room_heating,
-    electric_vehicle=electric_vehicle,
+    heating=heating,
+    electric_vehicle_per_id=electric_vehicle_per_id,
     other_devices=other_devices,
     temp_outside=temp_outside_sensor,
-    speedup=SPEEDUP,
+    speedup=speedup,
 )
 
 print("Initializing User Application")
 app = UserApp(
     start_date=start_date,
     metrology=simulation.sem,
-    decision_algo=baseline_decision_function if algorithm_version == "baseline" else ai_decision_function,
-    model_parameters=MODEL_PARAMETERS,
-    use_model=algorithm_version == "AI",
-    training_algo=training_function if algorithm_version == "AI" else None,
-    model_path=TRAINED_MODEL_PATH if algorithm_version == "AI" else None,
-    train_parameters=TRAIN_PARAMETERS if algorithm_version == "AI" else None,
+    decision_algo=ai_decision_function if use_ai_algorithm else baseline_decision_function,
+    model_parameters=model_parameters,
+    besmart_parameters=besmart_parameters,
+    use_model=use_ai_algorithm,
+    training_algo=training_function if use_ai_algorithm else None,
+    s3_parameters=s3_parameters if use_ai_algorithm else None,
+    train_parameters=train_parameters if use_ai_algorithm else None,
+    user_preferences=user_preferences,
     pv=pv,
-    electric_vehicle=electric_vehicle,
+    electric_vehicle_per_id=electric_vehicle_per_id,
     energy_storage=storage,
-    room_heating=room_heating,
+    heating=heating,
     temp_outside_sensor=temp_outside_sensor,
     speedup=speedup,
     cycle=userapp_cycle,
     num_cycles_retrain=num_cycles_retrain,
     use_cognit=cmd_args.offload,
-    reqs_init=REQS_INIT[algorithm_version],
-    heating_user_preferences={
-        "room": heating_preferences,
-    },
+    reqs_init=reqs_init["AI" if use_ai_algorithm else "baseline"],
+    heating_user_preferences=heating_preferences,
     ev_departure_plans=ev_departure_plans,
-    pv_production_series=TimeSeries.from_csv(PV_PRODUCTION_REAL_PATH),
-    pv_production_pred_series=TimeSeries.from_csv(PV_PRODUCTION_PRED_PATH),
-    consumption_series=TimeSeries.from_csv(UNCONTROLLED_CONSUMPTION_REAL_PATH),
-    consumption_pred_series=TimeSeries.from_csv(UNCONTROLLED_CONSUMPTION_PRED_PATH),
-    temp_outside_series=TimeSeries.from_csv(TEMP_OUTSIDE_REAL_PATH),
-    temp_outside_pred_series=TimeSeries.from_csv(TEMP_OUTSIDE_PRED_PATH),
 )
 
 
@@ -323,10 +302,6 @@ def print_help():
             "performs an unscheduled call of decision algorithm",
         ),
         (
-            "set_slr_config(perc: int)",
-            "updates Serverless Runtime scheduling preferences in terms of green energy usage",
-        ),
-        (
             "finish()",
             "finishes the simulation, deletes Serverless Runtime if present",
         ),
@@ -343,19 +318,19 @@ def print_help():
         ),
         (
             "set_consumption(current: float)",
-            "sets auto-consumption (use positive values for consumption)",
+            "sets consumption of uncontrolled devices (use positive values for consumption)",
         ),
         (
             "set_temp_outside(temp: float)",
             "sets temperature outside",
         ),
         (
-            "set_ev_driving_power(driving_power: float)",
-            "sets EV driving power",
+            "set_ev_driving_power(ev_name: str, driving_power: float)",
+            "sets current driving power of EV with id ev_name",
         ),
         (
-            "set_ev_departure_time(ev_departure_time: str)",
-            "sets user-planned EV departure time in format %H:%M when EV must be charged",
+            "set_ev_departure_time(ev_name: str, ev_departure_time: str)",
+            "sets user-planned EV departure time in format %H:%M when EV with id ev_name must be charged",
         ),
     ]
 
@@ -378,7 +353,7 @@ def set_heating_preferences(temp: float):
     if not cmd_args.live:
         print("Error: Live mode disabled")
         return
-    app.set_heating_user_preferences("room", LiveHeatingPreferences(temp))
+    app.set_heating_user_preferences(LiveHeatingPreferences(temp))
 
 
 def set_pv_state(current: float):
@@ -405,18 +380,20 @@ def set_temp_outside(temp: float):
     temp_outside_sensor.set_temp(temp)
 
 
-def set_ev_driving_power(driving_power: float):
+def set_ev_driving_power(ev_name: str, driving_power: float):
     if not cmd_args.live:
         print("Error: Live mode disabled")
         return
-    ev_driving.set_driving_power(driving_power)
+    ev_driving_schedule = LiveEVDriving(driving_power)
+    ev = simulation.get_ev(ev_name)
+    ev.set_getter_of_driving_power(ev_driving_schedule)
 
 
-def set_ev_departure_time(ev_departure_time: str):
+def set_ev_departure_time(ev_name: str, ev_departure_time: str):
     if not cmd_args.live:
         print("Error: Live mode disabled")
         return
-    ev_departure_plans.update_state(ev_departure_time)
+    ev_departure_plans[ev_name].update_state(ev_departure_time)
 
 
 def set_speedup(speedup: int):
@@ -425,13 +402,6 @@ def set_speedup(speedup: int):
         return
     simulation.set_speedup(speedup)
     app.set_speedup(speedup)
-
-
-def set_slr_config(perc: int):
-    if not cmd_args.offload:
-        print("Error: Cognit SLR not in use")
-        return
-    app.update_slr_preferences(perc)
 
 
 def finish():
@@ -445,18 +415,19 @@ print(f"PID: {os.getpid()}")
 print(
     80 * "-",
     "\nConfiguration:\n",
-    f"\n  Speedup: {SPEEDUP}",
-    f"\n  User app cycle length: {USER_APP_CYCLE_LENGTH} seconds",
-    "\n  Cognit renewable energy: 50%",
+    f"\n  Speedup: {speedup}",
+    f"\n  User app cycle length: {userapp_cycle} seconds",
 )
+if cmd_args.offload:
+    print(f"  Cognit renewable energy: {reqs_init['AI' if use_ai_algorithm else 'baseline']['MIN_ENERGY_RENEWABLE_USAGE']}%")
 if cmd_args.live:
     print(
-        f"\n  Temperature outside (°C): {INITIAL_STATE['live_temp_outside']}",
-        f"\n  Heating preferences (°C): {INITIAL_STATE['heating_preferences']}",
+        f"\n  Temperature outside (°C): {initial_state['live_temp_outside']}",
+        f"\n  Heating preferences (°C): {initial_state['heating_preferences']}",
         "\n  Consumption current (A): 0",
         "\n  PV current (A): 0",
-        f"\n  EV driving power (kW): {INITIAL_STATE['ev_driving_power']}",
-        "\n  EV departure time planned: 08:00",
+        f"\n  EV driving power (kW): {initial_state['ev_driving_power']}",
+        f"\n  EV departure time planned: {initial_state['ev_departure_time']}",
     )
 simulation.start()
 app.start()
