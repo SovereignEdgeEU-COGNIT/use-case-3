@@ -73,7 +73,7 @@ parser.add_argument(
 
 cmd_args = parser.parse_args()
 
-with open('scenario/config_local.json', 'r') as f:
+with open('scenario/config.json', 'r') as f:
     config = json.load(f)
 
 start_date = datetime.fromisoformat(config["START_DATE"])
