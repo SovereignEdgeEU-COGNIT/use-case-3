@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+from pathlib import Path
 import subprocess
 import textwrap
 from datetime import datetime, timedelta
@@ -32,6 +33,7 @@ from home_energy_management.device_simulators.utils import prepare_device_simula
 
 from simulation_runner import SimulationRunner
 from user_app import UserApp
+from device_modbus import ModbusSimulator
 
 # Parse the arguments
 parser = argparse.ArgumentParser()
@@ -69,6 +71,14 @@ parser.add_argument(
 parser.add_argument(
     "--num_cycles_retrain",
     help="userapp number of cycles after which to retrain decision model",
+)
+parser.add_argument(
+    "--modbus",
+    help="create modbus servers for devices at a given interface"
+)
+parser.add_argument(
+    "--userapp",
+    help="run userapp locally"
 )
 
 cmd_args = parser.parse_args()
@@ -224,31 +234,43 @@ simulation = SimulationRunner(
     speedup=speedup,
 )
 
-print("Initializing User Application")
-app = UserApp(
-    start_date=start_date,
-    metrology=simulation.sem,
-    decision_algo=ai_decision_function if use_ai_algorithm else baseline_decision_function,
-    model_parameters=model_parameters,
-    besmart_parameters=besmart_parameters,
-    use_model=use_ai_algorithm,
-    training_algo=training_function if use_ai_algorithm else None,
-    s3_parameters=s3_parameters if use_ai_algorithm else None,
-    train_parameters=train_parameters if use_ai_algorithm else None,
-    user_preferences=user_preferences,
-    pv=pv,
-    electric_vehicle_per_id=electric_vehicle_per_id,
-    energy_storage=storage,
-    heating=heating,
-    temp_outside_sensor=temp_outside_sensor,
-    speedup=speedup,
-    cycle=userapp_cycle,
-    num_cycles_retrain=num_cycles_retrain,
-    use_cognit=cmd_args.offload,
-    reqs_init=reqs_init["AI" if use_ai_algorithm else "baseline"],
-    heating_user_preferences=heating_preferences,
-    ev_departure_plans=ev_departure_plans,
-)
+if cmd_args.userapp:
+    print("Initializing User Application")
+    app = UserApp(
+        start_date=start_date,
+        metrology=simulation.sem,
+        decision_algo=ai_decision_function if use_ai_algorithm else baseline_decision_function,
+        model_parameters=model_parameters,
+        besmart_parameters=besmart_parameters,
+        use_model=use_ai_algorithm,
+        training_algo=training_function if use_ai_algorithm else None,
+        s3_parameters=s3_parameters if use_ai_algorithm else None,
+        train_parameters=train_parameters if use_ai_algorithm else None,
+        user_preferences=user_preferences,
+        pv=pv,
+        electric_vehicle_per_id=electric_vehicle_per_id,
+        energy_storage=storage,
+        heating=heating,
+        temp_outside_sensor=temp_outside_sensor,
+        speedup=speedup,
+        cycle=userapp_cycle,
+        num_cycles_retrain=num_cycles_retrain,
+        use_cognit=cmd_args.offload,
+        reqs_init=reqs_init["AI" if use_ai_algorithm else "baseline"],
+        heating_user_preferences=heating_preferences,
+        ev_departure_plans=ev_departure_plans,
+    )
+
+if cmd_args.modbus:
+    mbsim = ModbusSimulator(
+        sem=simulation.sem,
+        storage=[storage],
+        ev=list(electric_vehicle_per_id.values()),
+        room=[heating],
+        speedup=speedup,
+        init_user_pref=user_preferences,
+        home_model=model_parameters,
+    )
 
 
 def _print_commands(functions: list[tuple[str, str]], live: list[tuple[str, str]]):
@@ -430,5 +452,13 @@ if cmd_args.live:
         f"\n  EV departure time planned: {initial_state['ev_departure_time']}",
     )
 simulation.start()
-app.start()
+
+if cmd_args.userapp:
+    app.start()
+    
+if cmd_args.modbus:
+    mbsim.run_serial(
+        serial_dev=Path(cmd_args.modbus),
+    )
+
 print_help()
