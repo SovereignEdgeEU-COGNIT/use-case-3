@@ -1,4 +1,5 @@
 import logging
+import math
 import os
 import threading
 import time
@@ -95,6 +96,7 @@ class SimulationRunner:
         self.sem = metersim.Metersim(Path(self.scenario_dir))
         self.sem.create_runner(False)
         self.sem.set_speedup(self.speedup)
+        self.sem.set_time_utc(int(math.floor(self.start_date.timestamp())))
 
         devices = [
             self.consumption_device,
