@@ -38,6 +38,7 @@ class AlgoTrainParams:
 
 
 class UserApp:
+    sem_id: int
     start_date: datetime
     device_runtime: DeviceRuntime  # Cognit Serverless Runtime
     metrology: metersim.Metersim  # Metrology
@@ -73,6 +74,7 @@ class UserApp:
     app_logger: logging.Logger
     cognit_logger: logging.Logger
     global_logger: logging.Logger = None
+    training_state_cb: Callable
 
     # Registers
     last_algo_run: float = 0.0
@@ -84,6 +86,7 @@ class UserApp:
 
     def __init__(
             self,
+            sem_id: int,
             start_date: datetime,
             metrology: metersim.Metersim,
             decision_algo: Callable,
@@ -106,7 +109,9 @@ class UserApp:
             training_algo: Callable = None,
             s3_parameters: dict[str, str] = None,
             train_parameters: dict[str, Any] = None,
+            training_state_cb: Callable = None,
     ):
+        self.sem_id = sem_id
         self.start_date = start_date
         self.metrology = metrology
         self.decision_algo = decision_algo
@@ -133,12 +138,14 @@ class UserApp:
         self.shutdown_flag = False
         self.cond = threading.Condition()
 
-        app_log_handler = logging.FileHandler(f"log/{os.getpid()}/user_app.log")
+        app_log_handler = logging.FileHandler(f"log/{os.getpid()}/{self.sem_id}/user_app.log")
         app_log_formatter = logging.Formatter("")
         app_log_handler.setFormatter(app_log_formatter)
         self.app_logger = logging.Logger("user_app")
         self.app_logger.addHandler(app_log_handler)
         app_log_handler.setLevel(logging.INFO)
+
+        self.training_state_cb = training_state_cb
 
         if self.use_cognit:
             self.init_cognit_runtime(reqs_init)
@@ -148,7 +155,7 @@ class UserApp:
     def init_cognit_runtime(self, reqs_init: dict[str, Any]) -> None:
         self.cognit_logger = logging.getLogger("cognit-logger")
         self.cognit_logger.handlers.clear()
-        handler = logging.FileHandler(f"log/{os.getpid()}/cognit.log")
+        handler = logging.FileHandler(f"log/{os.getpid()}/{self.sem_id}/cognit.log")
         formatter = logging.Formatter(
             fmt="[%(asctime)s][%(levelname)s] %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
@@ -354,9 +361,13 @@ class UserApp:
         self.app_logger.info("Training parameters:")
         self.app_logger.info(f"{json.dumps(json.loads(algo_input.train_parameters), indent=4)}")
 
+        if self.training_state_cb is not None:
+            self.training_state_cb(1)
         start_time = time.time()
         algo_res = self.run_algo(self.training_algo, algo_input)
         end_time = time.time()
+        if self.training_state_cb is not None:
+            self.training_state_cb(0)
 
         if algo_res is not None:
             self.model_parameters["state_range"] = json.loads(algo_res)

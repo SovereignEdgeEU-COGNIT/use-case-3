@@ -1,4 +1,5 @@
 import logging
+import math
 import os
 import threading
 import time
@@ -7,6 +8,7 @@ from pathlib import Path
 from typing import Mapping
 
 import phoenixsystems.sem.metersim as metersim
+from phoenixsystems.sem.time import TimeMachine
 from home_energy_management.device_simulators.electric_vehicle import ElectricVehicle
 from home_energy_management.device_simulators.gateway import Gateway
 from home_energy_management.device_simulators.heating import Heating, TempSensor
@@ -17,6 +19,7 @@ from home_energy_management.device_simulators.storage import Storage
 
 class SimulationRunner:
     start_date: datetime
+    time_machine: TimeMachine | None
     sem: metersim.Metersim
     speedup: int
     scenario_dir: str
@@ -37,6 +40,7 @@ class SimulationRunner:
     def __init__(
             self,
             start_date: datetime,
+            time_machine: TimeMachine | None,
             pv: AbstractPV,
             storage: Storage,
             consumption_device: SimpleDevice,
@@ -46,8 +50,10 @@ class SimulationRunner:
             temp_outside: TempSensor,
             speedup: int,
             scenario_dir: str,
+            sem_id: int,
     ):
         self.start_date = start_date
+        self.time_machine = time_machine
         self.pv = pv
         self.consumption_device = consumption_device
         self.storage = storage
@@ -59,7 +65,7 @@ class SimulationRunner:
         self.shutdown_flag = False
         self.scenario_dir = scenario_dir
 
-        log_handler = logging.FileHandler(f"log/{os.getpid()}/simulation.log")
+        log_handler = logging.FileHandler(f"log/{os.getpid()}/{sem_id}/simulation.log")
         log_formatter = logging.Formatter("")
         log_handler.setFormatter(log_formatter)
         self.logger = logging.Logger("simulation")
@@ -93,8 +99,12 @@ class SimulationRunner:
 
     def init_sem(self):
         self.sem = metersim.Metersim(Path(self.scenario_dir))
-        self.sem.create_runner(False)
-        self.sem.set_speedup(self.speedup)
+        if self.time_machine is not None:
+            self.sem.create_runner_custom_time(self.time_machine)
+        else:
+            self.sem.create_runner(False)
+            self.sem.set_speedup(self.speedup)
+            self.sem.set_time_utc(math.floor(self.start_date.timestamp()))
 
         devices = [
             self.consumption_device,
@@ -164,4 +174,4 @@ class SimulationRunner:
             self.log(now)
 
             sec += 1
-            time.sleep(sec + start - time.time())
+            time.sleep(max(sec + start - time.time(), 0.01))
