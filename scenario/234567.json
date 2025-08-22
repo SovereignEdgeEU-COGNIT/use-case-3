@@ -4,7 +4,7 @@
 
     "SIMULATION_CONFIG": {
         "local_userapp": false,
-        "modbus_dev": "socket://0192.168.122.1:9999",
+        "modbus_dev": "/dev/ttyACM1",
         "use_baseline_algo": false,
         "no_offload": false
     },
