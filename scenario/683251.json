@@ -1,10 +1,10 @@
 {
     "USER_APP_CYCLE_LENGTH": 3600,
-    "NUM_CYCLES_RETRAIN": 4,
+    "NUM_CYCLES_RETRAIN": 24,
 
     "SIMULATION_CONFIG": {
         "local_userapp": true,
-        "modbus_dev": "socket://0192.168.122.1:9999",
+        "modbus_dev": "",
         "use_baseline_algo": false,
         "no_offload": false
     },
@@ -35,7 +35,7 @@
         "heating_coefficient": 0.98,
         "heat_loss_coefficient": 300.0,
         "temp_window": 0.75,
-        "heating_devices_power": [8.0, 8.0]
+        "heating_devices_power": [6.0, 5.0, 5.0]
     },
 
     "INITIAL_STATE": {
@@ -47,7 +47,7 @@
             "0": {
                 "ev_battery_capacity": 20.0,
                 "ev_driving_power": 0.0,
-                "ev_departure_time": "08:00"
+                "ev_departure_time": "8:00"
             }
         }
     },
@@ -75,12 +75,12 @@
     "BESMART_PARAMETERS": {
         "pv_generation": {
             "cid": 68,
-            "mid": 84,
+            "mid": 100,
             "moid": 70
         },
         "energy_consumption": {
             "cid": 68,
-            "mid": 83,
+            "mid": 99,
             "moid": 32
         }
     }

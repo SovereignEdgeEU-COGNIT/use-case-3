@@ -1,17 +1,17 @@
 {
     "USER_APP_CYCLE_LENGTH": 3600,
-    "NUM_CYCLES_RETRAIN": 4,
+    "NUM_CYCLES_RETRAIN": 24,
 
     "SIMULATION_CONFIG": {
         "local_userapp": true,
-        "modbus_dev": "socket://0192.168.122.1:9999",
+        "modbus_dev": "",
         "use_baseline_algo": false,
         "no_offload": false
     },
 
     "STORAGE_CONFIG": {
-        "max_power": 12.8,
-        "max_capacity": 24.0,
+        "max_power": 16.0,
+        "max_capacity": 30.0,
         "min_charge_level": 10.0,
         "charging_switch_level": 60.0,
         "efficiency": 0.85,
@@ -20,32 +20,46 @@
 
     "EV_CONFIG": {
         "0": {
-            "max_power": 6.9,
-            "max_capacity": 40.0,
+            "max_power": 5.5,
+            "max_capacity": 32.0,
             "min_charge_level": 10.0,
-            "driving_charge_level": 80.0,
-            "charging_switch_level": 75.0,
+            "driving_charge_level": 85.0,
+            "charging_switch_level": 65.0,
+            "efficiency": 0.85,
+            "energy_loss": 0.0
+        },
+      "1": {
+            "max_power": 8.4,
+            "max_capacity": 48.0,
+            "min_charge_level": 10.0,
+            "driving_charge_level": 75.0,
+            "charging_switch_level": 70.0,
             "efficiency": 0.85,
             "energy_loss": 0.0
         }
     },
 
     "HEATING_CONFIG": {
-        "heat_capacity": 3.6e7,
+        "heat_capacity": 4.8e7,
         "heating_coefficient": 0.98,
-        "heat_loss_coefficient": 300.0,
+        "heat_loss_coefficient": 320.0,
         "temp_window": 0.75,
-        "heating_devices_power": [8.0, 8.0]
+        "heating_devices_power": [6.0, 7.5, 6.5]
     },
 
     "INITIAL_STATE": {
         "curr_room_temp": 19.0,
         "live_temp_outside": 15.0,
         "heating_preferences": 20.0,
-        "storage_capacity": 12.0,
+        "storage_capacity": 15.0,
         "ev_state": {
             "0": {
-                "ev_battery_capacity": 20.0,
+                "ev_battery_capacity": 16.0,
+                "ev_driving_power": 0.0,
+                "ev_departure_time": "08:00"
+            },
+          "1": {
+                "ev_battery_capacity": 24.0,
                 "ev_driving_power": 0.0,
                 "ev_departure_time": "08:00"
             }
@@ -62,25 +76,29 @@
     "USER_PREFERENCES": {
         "ev_driving_schedule": {
             "0": {
-                "time": ["0:00", "8:00", "15:00", "20:00", "22:00"],
+                "time": ["0:00", "8:00", "18:00", "21:30", "22:00"],
+                "driving_power": [0.0, 3.0, 0.0, 5.0, 0.0]
+            },
+            "1": {
+                "time": ["0:00", "11:00", "13:00", "19:00", "20:30"],
                 "driving_power": [0.0, 5.0, 0.0, 8.0, 0.0]
             }
         },
         "pref_temp_schedule": {
-            "time": ["0:00", "7:00", "9:00", "17:00", "23:00"],
-            "temp": [18.0, 20.0, 17.5, 21.0, 19.0]
+            "time": ["0:00", "7:00", "10:00", "13:00", "18:00", "22:00"],
+            "temp": [19.0, 20.0, 17.0, 21.0, 20.0, 19.0]
         }
     },
 
     "BESMART_PARAMETERS": {
         "pv_generation": {
             "cid": 68,
-            "mid": 84,
+            "mid": 91,
             "moid": 70
         },
         "energy_consumption": {
             "cid": 68,
-            "mid": 83,
+            "mid": 90,
             "moid": 32
         }
     }
