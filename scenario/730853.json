@@ -1,0 +1,66 @@
+{
+    "USER_APP_CYCLE_LENGTH": 3600,
+    "NUM_CYCLES_RETRAIN": 36,
+
+    "SIMULATION_CONFIG": {
+        "local_userapp": true,
+        "modbus_dev": "",
+        "use_baseline_algo": false,
+        "no_offload": false
+    },
+
+    "STORAGE_CONFIG": {
+        "max_power": 10.4,
+        "max_capacity": 20.0,
+        "min_charge_level": 10.0,
+        "charging_switch_level": 70.0,
+        "efficiency": 0.85,
+        "energy_loss": 0.0
+    },
+
+    "EV_CONFIG": {},
+
+    "HEATING_CONFIG": {
+        "heat_capacity": 3e7,
+        "heating_coefficient": 0.98,
+        "heat_loss_coefficient": 300.0,
+        "temp_window": 0.75,
+        "heating_devices_power": [6.0, 6.0]
+    },
+
+    "INITIAL_STATE": {
+        "curr_room_temp": 19.0,
+        "live_temp_outside": 15.0,
+        "heating_preferences": 20.0,
+        "storage_capacity": 6.0,
+        "ev_state": {}
+    },
+
+    "MODEL_PARAMETERS": {
+        "delta_charging_power_perc": 5.0,
+        "storage_high_charge_level": 90.0,
+        "min_temp_setting": 17.0,
+        "max_temp_setting": 24.0
+    },
+
+    "USER_PREFERENCES": {
+        "ev_driving_schedule": {},
+        "pref_temp_schedule": {
+            "time": ["0:00", "10:00", "13:00", "18:00", "22:00"],
+            "temp": [19.0, 20.0, 21.0, 20.0, 19.0]
+        }
+    },
+
+    "BESMART_PARAMETERS": {
+        "pv_generation": {
+            "cid": 68,
+            "mid": 87,
+            "moid": 70
+        },
+        "energy_consumption": {
+            "cid": 68,
+            "mid": 86,
+            "moid": 32
+        }
+    }
+}

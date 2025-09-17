@@ -1,19 +1,19 @@
 {
     "USER_APP_CYCLE_LENGTH": 3600,
-    "NUM_CYCLES_RETRAIN": 4,
+    "NUM_CYCLES_RETRAIN": 12,
 
     "SIMULATION_CONFIG": {
-        "local_userapp": false,
+        "local_userapp": true,
         "modbus_dev": "/dev/ttyACM1",
         "use_baseline_algo": false,
         "no_offload": false
     },
 
     "STORAGE_CONFIG": {
-        "max_power": 12.8,
-        "max_capacity": 24.0,
+        "max_power": 6.4,
+        "max_capacity": 12.0,
         "min_charge_level": 10.0,
-        "charging_switch_level": 60.0,
+        "charging_switch_level": 70.0,
         "efficiency": 0.85,
         "energy_loss": 0.0
     },
@@ -31,23 +31,23 @@
     },
 
     "HEATING_CONFIG": {
-        "heat_capacity": 3.6e7,
+        "heat_capacity": 1.8e7,
         "heating_coefficient": 0.98,
-        "heat_loss_coefficient": 300.0,
+        "heat_loss_coefficient": 250.0,
         "temp_window": 0.75,
-        "heating_devices_power": [8.0, 8.0]
+        "heating_devices_power": [2.5, 3.0, 2.5]
     },
 
     "INITIAL_STATE": {
         "curr_room_temp": 19.0,
         "live_temp_outside": 15.0,
         "heating_preferences": 20.0,
-        "storage_capacity": 12.0,
+        "storage_capacity": 6.0,
         "ev_state": {
             "0": {
                 "ev_battery_capacity": 20.0,
                 "ev_driving_power": 0.0,
-                "ev_departure_time": "08:00"
+                "ev_departure_time": "06:00"
             }
         }
     },
@@ -62,25 +62,25 @@
     "USER_PREFERENCES": {
         "ev_driving_schedule": {
             "0": {
-                "time": ["0:00", "8:00", "15:00", "20:00", "22:00"],
-                "driving_power": [0.0, 5.0, 0.0, 8.0, 0.0]
+                "time": ["0:00", "6:00", "18:00"],
+                "driving_power": [0.0, 2.0, 0.0]
             }
         },
         "pref_temp_schedule": {
-            "time": ["0:00", "7:00", "9:00", "17:00", "23:00"],
-            "temp": [18.0, 20.0, 17.5, 21.0, 19.0]
+            "time": ["0:00", "5:00", "6:30", "17:30", "23:00"],
+            "temp": [18.0, 20.0, 17.0, 20.5, 19.0]
         }
     },
 
     "BESMART_PARAMETERS": {
         "pv_generation": {
             "cid": 68,
-            "mid": 84,
+            "mid": 94,
             "moid": 70
         },
         "energy_consumption": {
             "cid": 68,
-            "mid": 83,
+            "mid": 93,
             "moid": 32
         }
     }

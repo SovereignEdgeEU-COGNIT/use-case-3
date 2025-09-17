@@ -82,7 +82,7 @@ class UserApp:
     last_active_minus: int = 0
     last_pv_energy: float = 0.0
     last_storage_charge_level: float = 0.0
-    last_ev_battery_charge_level: float = 0.0
+    last_ev_battery_charge_level_per_id: dict[str, float] = {}
 
     def __init__(
             self,
@@ -119,6 +119,7 @@ class UserApp:
         self.pv = pv
         self.energy_storage = energy_storage
         self.electric_vehicle_per_id = electric_vehicle_per_id
+        self.last_ev_battery_charge_level_per_id = {ev_id: 0.0 for ev_id in self.electric_vehicle_per_id.keys()}
         self.heating = heating
         self.temp_outside_sensor = temp_outside_sensor
         self.speedup = speedup
@@ -220,7 +221,8 @@ class UserApp:
         self.last_active_minus = energy.active_minus
         self.last_pv_energy = self.pv.get_info()["energy_produced"]
         self.last_storage_charge_level = storage_parameters["curr_charge_level"]
-        self.last_ev_battery_charge_level = ev_parameters["curr_charge_level"]
+        for ev_id in self.last_ev_battery_charge_level_per_id.keys():
+            self.last_ev_battery_charge_level_per_id[ev_id] = ev_parameters_per_id[ev_id]["curr_charge_level"]
 
         algo_input = AlgoPredictParams(
             next_timestamp.timestamp(),
@@ -337,7 +339,10 @@ class UserApp:
         self.app_logger.info(f"Inside temperature (°C): {round(temperature_inside, 2)}")
         self.app_logger.info(f"Preferred temperature (°C): {round(preferred_temperature, 2)}")
         self.app_logger.info(f"Current storage SOC (%): {round(storage_parameters['curr_charge_level'], 2)}")
-        self.app_logger.info(f"Current EV battery SOC (%): {round(ev_battery_parameters['curr_charge_level'], 2)}")
+        for ev_id, ev_battery_parameters in ev_battery_parameters_per_id.items():
+            self.app_logger.info(
+                f"Current EV (id: {ev_id}) battery SOC (%): {round(ev_battery_parameters['curr_charge_level'], 2)}"
+            )
 
         if algo_res is not None:
             self.execute_algo_response(algo_res)
