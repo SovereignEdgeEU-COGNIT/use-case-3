@@ -25,6 +25,7 @@ class AlgoPredictParams:
     heating_parameters: str
     user_preferences: str
 
+
 @dataclass
 class AlgoTrainParams:
     train_parameters: str
@@ -45,8 +46,7 @@ class UserApp:
     heating_user_preferences: HeatingPreferences
     ev_departure_plans: dict[str, EVDeparturePlans]
     cycle_time: int
-    speedup: int
-    num_cycles_retrain: int
+    cycle_train_time: int
     model_parameters: dict[str, float]
     train_parameters: dict[str, Any]
     s3_parameters: dict[str, str]
@@ -77,7 +77,8 @@ class UserApp:
     training_state_cb: Callable
 
     # Registers
-    last_algo_run: float = 0.0
+    last_predict_run: float = 0.0
+    last_train_run: float = 0.0
     last_active_plus: int = 0
     last_active_minus: int = 0
     last_pv_energy: float = 0.0
@@ -85,31 +86,30 @@ class UserApp:
     last_ev_battery_charge_level_per_id: dict[str, float] = {}
 
     def __init__(
-            self,
-            sem_id: int,
-            start_date: datetime,
-            metrology: metersim.Metersim,
-            decision_algo: Callable,
-            model_parameters: dict[str, float],
-            pv: DeviceUserApi,
-            energy_storage: DeviceUserApi,
-            electric_vehicle_per_id: Mapping[str, DeviceUserApi],
-            heating: DeviceUserApi,
-            temp_outside_sensor: DeviceUserApi,
-            speedup: int,
-            cycle: int,
-            num_cycles_retrain: int,
-            heating_user_preferences: HeatingPreferences,
-            ev_departure_plans: dict[str, EVDeparturePlans],
-            user_preferences: dict[str, Any],
-            besmart_parameters: dict[str, Any],
-            use_cognit: bool = True,
-            reqs_init: dict[str, Any] = None,
-            use_model: bool = True,
-            training_algo: Callable = None,
-            s3_parameters: dict[str, str] = None,
-            train_parameters: dict[str, Any] = None,
-            training_state_cb: Callable = None,
+        self,
+        sem_id: int,
+        start_date: datetime,
+        metrology: metersim.Metersim,
+        decision_algo: Callable,
+        model_parameters: dict[str, float],
+        pv: DeviceUserApi,
+        energy_storage: DeviceUserApi,
+        electric_vehicle_per_id: Mapping[str, DeviceUserApi],
+        heating: DeviceUserApi,
+        temp_outside_sensor: DeviceUserApi,
+        cycle: int,
+        cycle_train: int,
+        heating_user_preferences: HeatingPreferences,
+        ev_departure_plans: dict[str, EVDeparturePlans],
+        user_preferences: dict[str, Any],
+        besmart_parameters: dict[str, Any],
+        use_cognit: bool = True,
+        reqs_init: dict[str, Any] = None,
+        use_model: bool = True,
+        training_algo: Callable = None,
+        s3_parameters: dict[str, str] = None,
+        train_parameters: dict[str, Any] = None,
+        training_state_cb: Callable = None,
     ):
         self.sem_id = sem_id
         self.start_date = start_date
@@ -122,9 +122,8 @@ class UserApp:
         self.last_ev_battery_charge_level_per_id = {ev_id: 0.0 for ev_id in self.electric_vehicle_per_id.keys()}
         self.heating = heating
         self.temp_outside_sensor = temp_outside_sensor
-        self.speedup = speedup
         self.cycle_time = cycle
-        self.num_cycles_retrain = num_cycles_retrain
+        self.cycle_train_time = cycle_train
         self.heating_user_preferences = heating_user_preferences
         self.ev_departure_plans = ev_departure_plans
         self.use_cognit = use_cognit
@@ -149,11 +148,11 @@ class UserApp:
         self.training_state_cb = training_state_cb
 
         if self.use_cognit:
-            self.init_cognit_runtime(reqs_init)
+            self._init_cognit_runtime(reqs_init)
 
-        self.app_thread = threading.Thread(target=self.app_loop)
+        self.app_thread = threading.Thread(target=self._app_loop)
 
-    def init_cognit_runtime(self, reqs_init: dict[str, Any]) -> None:
+    def _init_cognit_runtime(self, reqs_init: dict[str, Any]) -> None:
         self.cognit_logger = logging.getLogger("cognit-logger")
         self.cognit_logger.handlers.clear()
         handler = logging.FileHandler(f"log/{os.getpid()}/{self.sem_id}/cognit.log")
@@ -178,32 +177,32 @@ class UserApp:
 
         self.cognit_logger.info("Runtime should be ready now!")
 
-    def set_heating_user_preferences(self, pref: HeatingPreferences):
-        self.heating_user_preferences = pref
+    def _get_sem_time(self) -> int:
+        return self.metrology.get_time_utc()
 
-    def get_ev_departure_plans(self):
-        return self.ev_departure_plans
-
-    def offload_now(self):
+    def offload_predict_now(self):
         with self.cond:
-            self.offload_predict()
+            self._offload_predict()
+            self.cond.notify_all()
+
+    def offload_train_now(self):
+        with self.cond:
+            self._offload_train()
             self.cond.notify_all()
 
     def set_cycle_length(self, cycle: int):
         with self.cond:
             self.cycle_time = cycle
+            self._offload_train()
             self.cond.notify_all()
 
-    def get_cycle_length(self):
-        return self.cycle_time
-
-    def set_speedup(self, speedup: int):
+    def set_cycle_train_length(self, cycle_train: int):
         with self.cond:
-            self.speedup = speedup
+            self.cycle_train_time = cycle_train
             self.cond.notify_all()
 
-    def update_predict_algo_input(self, now: float) -> AlgoPredictParams:
-        self.last_algo_run = now
+    def _update_predict_algo_input(self, now: float) -> AlgoPredictParams:
+        self.last_predict_run = now
         next_timestamp = self.start_date + timedelta(seconds=self.metrology.get_uptime() + self.cycle_time)
 
         storage_parameters = self.energy_storage.get_info()
@@ -236,8 +235,8 @@ class UserApp:
         )
         return algo_input
 
-    def update_training_algo_input(self, now: float) -> AlgoTrainParams:
-        self.last_algo_run = now
+    def _update_training_algo_input(self, now: float) -> AlgoTrainParams:
+        self.last_predict_run = now
         last_timestamp = self.start_date + timedelta(seconds=self.metrology.get_uptime() - self.cycle_time)
         first_timestamp = last_timestamp - timedelta(days=self.train_parameters["history_timedelta_days"])
         self.besmart_parameters["since"] = first_timestamp.timestamp()
@@ -259,20 +258,19 @@ class UserApp:
         )
         return algo_input
 
-    def execute_algo_response(self, algo_res: str):
-        (
-            conf_temp,
-            storage_params,
-            ev_params_per_id,
-            *_
-        ) = algo_res
+    def _execute_algo_response(self, algo_res: str):
+        (conf_temp, storage_params, ev_params_per_id, *_) = algo_res
         self.energy_storage.set_params(json.loads(storage_params))
         ev_params_per_id = json.loads(ev_params_per_id)
         for ev_id, ev_params in ev_params_per_id.items():
             self.electric_vehicle_per_id[ev_id].set_params(ev_params)
-        self.heating.set_params({"optimal_temp": conf_temp,})
+        self.heating.set_params(
+            {
+                "optimal_temp": conf_temp,
+            }
+        )
 
-    def run_algo(self, algo_function: Callable, algo_input: AlgoPredictParams | AlgoTrainParams) -> Any:
+    def _run_algo(self, algo_function: Callable, algo_input: AlgoPredictParams | AlgoTrainParams) -> Any:
         if not self.use_cognit:
             res = algo_function(*astuple(algo_input))
         else:
@@ -289,7 +287,7 @@ class UserApp:
         return res
 
     def start(self):
-        self.start_time = time.clock_gettime(time.CLOCK_MONOTONIC)
+        self.start_time = self._get_sem_time()
         self.app_thread.start()
 
     def destroy(self):
@@ -298,12 +296,12 @@ class UserApp:
             self.cond.notify_all()
         self.app_thread.join()
 
-    def offload_predict(self):
-        now = time.clock_gettime(time.CLOCK_MONOTONIC)
-        algo_input = self.update_predict_algo_input(now)
-        algo_res = self.run_algo(self.decision_algo, algo_input)
+    def _offload_predict(self):
+        now = self._get_sem_time()
+        algo_input = self._update_predict_algo_input(now)
+        algo_res = self._run_algo(self.decision_algo, algo_input)
 
-        self.app_logger.info("\n\x1B[2J\x1B[H")
+        self.app_logger.info("\n\x1b[2J\x1b[H")
         self.app_logger.info(f"{self.start_date + timedelta(seconds=self.metrology.get_uptime())}")
         self.app_logger.info("\n\tINPUT")
         model_parameters = json.loads(algo_input.home_model_parameters)
@@ -323,7 +321,7 @@ class UserApp:
         )
         ev_battery_parameters_per_id = json.loads(algo_input.ev_battery_parameters_per_id)
         for ev_id, ev_battery_parameters in ev_battery_parameters_per_id.items():
-            time_until_ev_charged = ev_battery_parameters['time_until_charged']
+            time_until_ev_charged = ev_battery_parameters["time_until_charged"]
             self.app_logger.info(
                 f"EV (id: {ev_id}) battery parameters:"
                 f"\n\t- max capacity (kWh): {ev_battery_parameters['max_capacity']}, "
@@ -345,7 +343,7 @@ class UserApp:
             )
 
         if algo_res is not None:
-            self.execute_algo_response(algo_res)
+            self._execute_algo_response(algo_res)
             self.app_logger.info("\n\tOUTPUT")
             self.app_logger.info(f"Configuration of temperature (°C): {round(algo_res[0], 2)}")
             self.app_logger.info(f"Configuration of storage: {json.dumps(json.loads(algo_res[1]), indent=4)}")
@@ -357,11 +355,11 @@ class UserApp:
         else:
             self.app_logger.warning("Decision algorithm call failed")
 
-    def offload_train(self):
-        now = time.clock_gettime(time.CLOCK_MONOTONIC)
-        algo_input = self.update_training_algo_input(now)
+    def _offload_train(self):
+        now = self._get_sem_time()
+        algo_input = self._update_training_algo_input(now)
 
-        self.app_logger.info("\n\x1B[2J\x1B[H")
+        self.app_logger.info("\n\x1b[2J\x1b[H")
         self.app_logger.info(f"{self.start_date + timedelta(seconds=self.metrology.get_uptime())}")
         self.app_logger.info("Training parameters:")
         self.app_logger.info(f"{json.dumps(json.loads(algo_input.train_parameters), indent=4)}")
@@ -369,7 +367,7 @@ class UserApp:
         if self.training_state_cb is not None:
             self.training_state_cb(1)
         start_time = time.time()
-        algo_res = self.run_algo(self.training_algo, algo_input)
+        algo_res = self._run_algo(self.training_algo, algo_input)
         end_time = time.time()
         if self.training_state_cb is not None:
             self.training_state_cb(0)
@@ -381,36 +379,21 @@ class UserApp:
         else:
             self.app_logger.warning("Training decision model call failed")
 
-    def app_loop(self):
-        self.last_algo_run = time.clock_gettime(time.CLOCK_MONOTONIC)
-        counter = 0
+    def _app_loop(self):
+        now = self._get_sem_time()
+        self.last_predict_run = now
+        self.last_train_run = now
 
         with self.cond:
             while not self.shutdown_flag:
-                slept = False
+                now = self._get_sem_time()
 
-                while (
-                        time.clock_gettime(time.CLOCK_MONOTONIC)
-                        < (self.cycle_time / self.speedup + self.last_algo_run)
-                        and not self.shutdown_flag
-                ) or not slept:
-                    sleep_time = max(
-                        self.cycle_time / self.speedup
-                        + self.last_algo_run
-                        - time.clock_gettime(time.CLOCK_MONOTONIC),
-                        0.001,  # Sleep 1 ms to allow other threads to acquire cond
-                    )
+                training_performed = False
+                if self.use_model and now >= self.last_train_run + self.cycle_train_time:
+                    self._offload_train()
+                    training_performed = True
 
-                    self.cond.wait(sleep_time)
-                    slept = True
+                if training_performed or now >= self.last_predict_run + self.cycle_time:
+                    self._offload_predict()
 
-                if self.use_model and counter % self.num_cycles_retrain == 0:
-                    old_speedup = self.speedup
-                    self.set_speedup(1)
-                    self.metrology.set_speedup(1)
-                    self.offload_train()
-                    self.set_speedup(old_speedup)
-                    self.metrology.set_speedup(old_speedup)
-                    counter = 0
-                counter += 1
-                self.offload_predict()
+                self.cond.wait(1)  # Sleep 1 second

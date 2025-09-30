@@ -44,7 +44,7 @@ MAX_REG_COUNT = 123  # in a message
 log_handler = logging.StreamHandler()
 formatter = logging.Formatter("")
 log_handler.setFormatter(formatter)
-logger = logging.Logger("modbus")
+logger = logging.Logger("pymodbus")
 logger.addHandler(log_handler)
 logger.setLevel(logging.ERROR)
 
@@ -81,6 +81,8 @@ class MbSimControl(MbSlave):
     user_pref_changed: int
     offload_freq: int  # sec
     training_freq: int  # sec
+    predict_now: int = 0
+    train_now: int = 0
 
     def __init__(
         self,
@@ -114,26 +116,38 @@ class MbSimControl(MbSlave):
             set_callback=self.on_set_cb, di=datablock, co=datablock, hr=datablock, ir=datablock
         )
 
-    def set_user_pref_chenged(self):
-        self.user_pref_changed = 1  # This is set to 0, by the client, when it obtains thew new configuration
+    def set_user_pref_changed(self):
+        self.user_pref_changed = 1  # This is set to 0, by the client, when it obtains the new configuration
+
+    def offload_predict_now(self):
+        self.predict_now = 1
+        self.set_user_pref_changed()
+
+    def offload_train_now(self):
+        self.train_now = 1
+        self.set_user_pref_changed()
 
     def set_offload_freq(self, cycle_len: int):
         self.offload_freq = cycle_len
-        self.set_user_pref_chenged()
+        self.train_now = 1
+        self.set_user_pref_changed()
 
     def set_training_freq(self, train_cycle_len: int):
         self.training_freq = train_cycle_len
-        self.set_user_pref_chenged()
+        self.set_user_pref_changed()
 
     def on_set_cb(self, fc_as_hex, address, values):
-        # Here set requires no special action
-        pass
+        if address == REGISTER_CONFIG and len(values) == 1 and values[0] == 0:
+            self.train_now = 0
+            self.predict_now = 0
+            self.user_pref_changed = 0
 
     def update_regs(self):
         payload = [self.user_pref_changed]
         payload += ModbusClientMixin.convert_to_registers(
             [self.offload_freq, self.training_freq], data_type=ModbusClientMixin.DATATYPE.UINT32, word_order="big"
         )
+        payload += [self.predict_now, self.train_now]
         self.context.setValues(3, REGISTER_CONFIG, payload)
 
 
@@ -498,18 +512,18 @@ class ModbusSimulator:
         for dev in self.devices:
             slaves[dev.slave_id] = dev.context
         self.context = ModbusServerContext(devices=slaves, single=False)
-        
-        self.serial_dev = serial_dev
-        self.thread = threading.Thread(target=self.run_serial)
 
-    async def updating_task(self):
+        self.serial_dev = serial_dev
+        self.thread = threading.Thread(target=self._run_serial)
+
+    async def _updating_task(self):
         while True:
             for dev in self.devices:
                 dev.update_regs()
             await asyncio.sleep(1)
 
-    async def start_serial(self):
-        task_updating = asyncio.create_task(self.updating_task())
+    async def _start_serial(self):
+        task_updating = asyncio.create_task(self._updating_task())
         await StartAsyncSerialServer(
             context=self.context,
             port=self.serial_dev.as_posix(),
@@ -520,8 +534,23 @@ class ModbusSimulator:
         )
         await task_updating
 
-    def run_serial(self):
-        asyncio.run(self.start_serial())
-        
+    def _run_serial(self):
+        asyncio.run(self._start_serial())
+
+    def offload_predict_now(self):
+        self.mbSimControl.offload_predict_now()
+
+    def offload_train_now(self):
+        self.mbSimControl.offload_train_now()
+
+    def set_cycle_length(self, cycle: int):
+        self.mbSimControl.set_offload_freq(cycle)
+
+    def set_cycle_train_length(self, cycle: int):
+        self.mbSimControl.set_training_freq(cycle)
+
     def start(self):
+        logging.basicConfig()
+        log = logging.getLogger('pymodbus')
+        log.setLevel(logging.ERROR)
         self.thread.start()

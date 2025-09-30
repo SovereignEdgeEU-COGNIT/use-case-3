@@ -78,7 +78,7 @@ class HouseholdSimulator:
         model_parameters.update(heating_config)
         user_preferences = sem_config["USER_PREFERENCES"]
         besmart_parameters = sem_config["BESMART_PARAMETERS"]
-        
+
         simulation_config = sem_config["SIMULATION_CONFIG"]
         run_local_userapp = simulation_config["local_userapp"]
         modbus_path = Path(simulation_config["modbus_dev"])
@@ -203,9 +203,8 @@ class HouseholdSimulator:
                 energy_storage=storage,
                 heating=heating,
                 temp_outside_sensor=temp_outside_sensor,
-                speedup=speedup,
                 cycle=userapp_cycle,
-                num_cycles_retrain=num_cycles_retrain,
+                cycle_train=(num_cycles_retrain * userapp_cycle),
                 use_cognit=use_cognit,
                 reqs_init=reqs_init["AI" if use_ai_algorithm else "baseline"],
                 heating_user_preferences=heating_preferences,
@@ -236,3 +235,27 @@ class HouseholdSimulator:
 
         if self.mbsim is not None:
             self.mbsim.start()
+
+    def offload_decision(self):
+        if self.app is not None:
+            self.app.offload_predict_now()
+        else:
+            self.mbsim.offload_predict_now()
+
+    def offload_training(self):
+        if self.app is not None:
+            self.app.offload_train_now()
+        else:
+            self.mbsim.offload_train_now()
+
+    def set_decision_cycle(self, cycle: int):
+        if self.app is not None:
+            self.app.set_cycle_length(cycle)
+        else:
+            self.mbsim.set_cycle_length(cycle)
+
+    def set_training_cycle(self, cycle: int):
+        if self.app is not None:
+            self.app.set_cycle_train_length(cycle)
+        else:
+            self.mbsim.set_cycle_train_length(cycle)
