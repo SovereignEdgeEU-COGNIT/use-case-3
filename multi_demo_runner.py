@@ -80,3 +80,27 @@ for id in sem_id_list:
 
 for hsim in households:
     hsim.start() # TODO: add graceful finish
+
+
+def get_household_by_id(sem_id: int) -> HouseholdSimulator | None:
+    for h in households:
+        if h.sem_id == sem_id:
+            return h
+    return None
+
+
+def offload_decision_now(sem_id: int):
+    h = get_household_by_id(sem_id)
+    h.offload_decision()
+
+def offload_training_now(sem_id: int):
+    h = get_household_by_id(sem_id)
+    h.offload_training()
+
+def set_decision_cycle(sem_id:int, cycle_sec: int):
+    h = get_household_by_id(sem_id)
+    h.set_decision_cycle(cycle_sec)
+
+def set_training_cycle(sem_id:int, cycle_sec: int):
+    h = get_household_by_id(sem_id)
+    h.set_training_cycle(cycle_sec)
