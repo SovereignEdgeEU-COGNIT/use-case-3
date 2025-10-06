@@ -69,7 +69,7 @@ class HouseholdSimulator:
             sem_config = json.load(f)
 
         userapp_cycle = sem_config["USER_APP_CYCLE_LENGTH"]
-        num_cycles_retrain = sem_config["NUM_CYCLES_RETRAIN"]
+        cycle_train = sem_config["TRAIN_CYCLE_LENGTH"]
         initial_state = sem_config["INITIAL_STATE"]
         storage_config = sem_config["STORAGE_CONFIG"]
         ev_config = sem_config["EV_CONFIG"]
@@ -204,7 +204,7 @@ class HouseholdSimulator:
                 heating=heating,
                 temp_outside_sensor=temp_outside_sensor,
                 cycle=userapp_cycle,
-                cycle_train=(num_cycles_retrain * userapp_cycle),
+                cycle_train=cycle_train,
                 use_cognit=use_cognit,
                 reqs_init=reqs_init["AI" if use_ai_algorithm else "baseline"],
                 heating_user_preferences=heating_preferences,
@@ -226,7 +226,7 @@ class HouseholdSimulator:
                 training_state_cb=training_state_changed_cb,
             )
             self.mbsim.mbSimControl.set_offload_freq(userapp_cycle)
-            self.mbsim.mbSimControl.set_training_freq(userapp_cycle * num_cycles_retrain)
+            self.mbsim.mbSimControl.set_training_freq(cycle_train)
 
     def start(self):
         self.simulation.start()
