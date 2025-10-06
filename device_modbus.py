@@ -20,7 +20,7 @@ from abc import ABC, abstractmethod
 import phoenixsystems.sem.metersim as metersim
 
 from home_energy_management.device_simulators.heating import Heating
-from home_energy_management.device_simulators.electric_vehicle import ElectricVehicle
+from home_energy_management.device_simulators.electric_vehicle import ElectricVehicle, ScheduledEVDeparturePlans
 from home_energy_management.device_simulators.storage import Storage
 from home_energy_management.device_simulators.photovoltaic import AbstractPV
 import serial
@@ -286,10 +286,12 @@ class MbEnergyStorage(MbSlave):
 
 class MbEV(MbSlave):
     ev: ElectricVehicle
+    ev_departure_plans: ScheduledEVDeparturePlans
 
-    def __init__(self, slave_id, ev, init_val):
+    def __init__(self, slave_id, ev, ev_departure_plans, init_val):
         super().__init__(slave_id)
         self.ev = ev
+        self.ev_departure_plans = ev_departure_plans
 
         float_val = [init_val["InWRte"], init_val["OutWRte"]]
 
@@ -344,6 +346,11 @@ class MbEV(MbSlave):
         )
 
         payload.append(int(info["is_available"]))
+
+        uint64_val = [self.ev_departure_plans.get_time_until_departure()]
+        payload += ModbusClientMixin.convert_to_registers(
+            uint64_val, data_type=ModbusClientMixin.DATATYPE.UINT64, word_order="big"
+        )
 
         self.context.setValues(3, REGISTER_INFO, payload)
 
@@ -451,6 +458,7 @@ class ModbusSimulator:
         sem: metersim.Metersim,
         storage: list[Storage],
         ev: list[ElectricVehicle],
+        ev_departure_plans: list[ScheduledEVDeparturePlans],
         room: list[Heating],
         speedup: int,
         init_user_pref: dict,
@@ -477,7 +485,7 @@ class ModbusSimulator:
         # EV
         for idx, dev in enumerate(ev):
             init_val = {"InWRte": 1.0, "OutWRte": 1.0, "StorCtl": 0}
-            mbEV = MbEV(ADDRESS_FIRST_EV + idx, dev, init_val)
+            mbEV = MbEV(ADDRESS_FIRST_EV + idx, dev, ev_departure_plans[str(idx)], init_val)
             self.devices.append(mbEV)
 
         # Heating
@@ -551,6 +559,6 @@ class ModbusSimulator:
 
     def start(self):
         logging.basicConfig()
-        log = logging.getLogger('pymodbus')
+        log = logging.getLogger("pymodbus")
         log.setLevel(logging.ERROR)
         self.thread.start()

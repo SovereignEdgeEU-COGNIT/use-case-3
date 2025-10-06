@@ -217,6 +217,7 @@ class HouseholdSimulator:
                 sem=self.simulation.sem,
                 storage=[storage],
                 ev=list(electric_vehicle_per_id.values()),
+                ev_departure_plans=ev_departure_plans,
                 room=[heating],
                 speedup=speedup,
                 init_user_pref=user_preferences,
