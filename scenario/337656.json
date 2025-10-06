@@ -1,6 +1,6 @@
 {
     "USER_APP_CYCLE_LENGTH": 3600,
-    "NUM_CYCLES_RETRAIN": 8,
+    "TRAIN_CYCLE_LENGTH": 28800,
 
     "SIMULATION_CONFIG": {
         "local_userapp": true,

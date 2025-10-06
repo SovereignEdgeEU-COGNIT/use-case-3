@@ -39,7 +39,7 @@ The most important parameters are:
 * `SPEEDUP` (default: 360) – the speedup factor of the simulation
 * `SEM_ID_LIST` - list of IDs of smart energy meters, pointing to the specification files
 * `USER_APP_CYCLE_LENGTH` (default: 3600 seconds) – time (in "virtual" seconds) between consecutive calls of the decision algorithm
-* `NUM_CYCLES_RETRAIN` (default: 24) - number of cycles after which training of AI model is called (ignored when using baseline version of algorithm)
+* `TRAIN_CYCLE_LENGTH` (default: 62400 seconds) - time (in "virtual" seconds) between consecutive executions of training of AI model (ignored when using baseline version of algorithm)
 
 Parameters `SPEEDUP` and `USER_APP_CYCLE_LENGTH` can be changed during the simulation (see below).
 
