@@ -1,5 +1,5 @@
 git+https://github.com/SovereignEdgeEU-COGNIT/use-case-3-sem-simulator.git@v1.1.0#egg=phoenixsystems-sem&subdirectory=python_api
 git+https://github.com/SovereignEdgeEU-COGNIT/use-case-3-home-energy-management.git@v2.1.1
-git+https://github.com/SovereignEdgeEU-COGNIT/device-runtime-py.git@dev
+# git+https://github.com/SovereignEdgeEU-COGNIT/device-runtime-py.git@dev
 pymodbus>=3.11.1
 pyserial>=3.5

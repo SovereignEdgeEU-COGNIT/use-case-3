@@ -3,8 +3,8 @@
     "TRAIN_CYCLE_LENGTH": 86400,
 
     "SIMULATION_CONFIG": {
-        "local_userapp": true,
-        "modbus_dev": "",
+        "local_userapp": false,
+        "modbus_dev": "/dev/ttyACM3",
         "use_baseline_algo": false,
         "no_offload": false
     },
