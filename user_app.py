@@ -27,8 +27,8 @@ class AlgoPredictParams:
 
 
 @dataclass
-class AlgoTrainParams:
-    train_parameters: str
+class AlgoTrainEvalParams:
+    algo_parameters: str
     s3_parameters: str
     besmart_parameters: str
     home_model_parameters: str
@@ -48,12 +48,14 @@ class UserApp:
     cycle_time: int
     cycle_train_time: int
     model_parameters: dict[str, float]
+    eval_parameters: dict[str, Any]
     train_parameters: dict[str, Any]
     s3_parameters: dict[str, str]
     besmart_parameters: dict[str, Any]
     user_preferences: dict[str, Any]
 
     # Offloaded functions
+    evaluation_algo: Callable
     training_algo: Callable
     decision_algo: Callable
 
@@ -69,6 +71,7 @@ class UserApp:
     app_thread: threading.Thread
     use_cognit: bool
     use_model: bool
+    train_model: bool = False
     start_time: float
     cond: threading.Condition
     app_logger: logging.Logger
@@ -106,8 +109,10 @@ class UserApp:
         use_cognit: bool = True,
         reqs_init: dict[str, Any] = None,
         use_model: bool = True,
+        evaluation_algo: Callable = None,
         training_algo: Callable = None,
         s3_parameters: dict[str, str] = None,
+        eval_parameters: dict[str, Any] = None,
         train_parameters: dict[str, Any] = None,
         training_state_cb: Callable = None,
     ):
@@ -131,8 +136,10 @@ class UserApp:
         self.user_preferences = user_preferences
 
         self.use_model = use_model
+        self.evaluation_algo = evaluation_algo
         self.training_algo = training_algo
         self.s3_parameters = s3_parameters
+        self.eval_parameters = eval_parameters
         self.train_parameters = train_parameters
 
         self.shutdown_flag = False
@@ -235,10 +242,14 @@ class UserApp:
         )
         return algo_input
 
-    def _update_training_algo_input(self, now: float) -> AlgoTrainParams:
-        self.last_predict_run = now
+    def _update_train_eval_algo_input(
+            self,
+            now: float,
+            algo_parameters: dict[str, Any],
+    ) -> AlgoTrainEvalParams:
+        self.last_train_run = now
         last_timestamp = self.start_date + timedelta(seconds=self.metrology.get_uptime() - self.cycle_time)
-        first_timestamp = last_timestamp - timedelta(days=self.train_parameters["history_timedelta_days"])
+        first_timestamp = last_timestamp - timedelta(days=algo_parameters["history_timedelta_days"])
         self.besmart_parameters["since"] = first_timestamp.timestamp()
         self.besmart_parameters["till"] = last_timestamp.timestamp()
         ev_parameters_per_id = {}
@@ -246,8 +257,8 @@ class UserApp:
             ev_parameters_per_id[ev_id] = electric_vehicle.get_info()
         self.user_preferences["cycle_timedelta_s"] = self.cycle_time
 
-        algo_input = AlgoTrainParams(
-            json.dumps(self.train_parameters),
+        algo_input = AlgoTrainEvalParams(
+            json.dumps(algo_parameters),
             json.dumps(self.s3_parameters),
             json.dumps(self.besmart_parameters),
             json.dumps(self.model_parameters),
@@ -270,7 +281,7 @@ class UserApp:
             }
         )
 
-    def _run_algo(self, algo_function: Callable, algo_input: AlgoPredictParams | AlgoTrainParams) -> Any:
+    def _run_algo(self, algo_function: Callable, algo_input: AlgoPredictParams | AlgoTrainEvalParams) -> Any:
         if not self.use_cognit:
             res = algo_function(*astuple(algo_input))
         else:
@@ -355,14 +366,33 @@ class UserApp:
         else:
             self.app_logger.warning("Decision algorithm call failed")
 
-    def _offload_train(self):
+    def _offload_evaluate(self):
         now = self._get_sem_time()
-        algo_input = self._update_training_algo_input(now)
+        algo_input = self._update_train_eval_algo_input(now, self.eval_parameters)
 
         self.app_logger.info("\n\x1b[2J\x1b[H")
         self.app_logger.info(f"{self.start_date + timedelta(seconds=self.metrology.get_uptime())}")
+        self.app_logger.info("Evaluation parameters:")
+        self.app_logger.info(f"{json.dumps(json.loads(algo_input.algo_parameters), indent=4)}")
+
+        start_time = time.time()
+        algo_res = self._run_algo(self.evaluation_algo, algo_input)
+        end_time = time.time()
+        self.app_logger.info(f"\nEvaluation completed in: {(end_time - start_time):.2f} seconds")
+        self.app_logger.info(f"Model is valid: {algo_res}\n")
+
+        if algo_res:
+            self.train_model = False
+        else:
+            self.train_model = True
+
+    def _offload_train(self):
+        now = self._get_sem_time()
+        algo_input = self._update_train_eval_algo_input(now, self.train_parameters)
+
+        self.app_logger.info(f"{self.start_date + timedelta(seconds=self.metrology.get_uptime())}")
         self.app_logger.info("Training parameters:")
-        self.app_logger.info(f"{json.dumps(json.loads(algo_input.train_parameters), indent=4)}")
+        self.app_logger.info(f"{json.dumps(json.loads(algo_input.algo_parameters), indent=4)}")
 
         if self.training_state_cb is not None:
             self.training_state_cb(1)
@@ -372,8 +402,7 @@ class UserApp:
         if self.training_state_cb is not None:
             self.training_state_cb(0)
 
-        if algo_res is not None:
-            self.model_parameters["state_range"] = json.loads(algo_res)
+        if algo_res:
             self.app_logger.info(f"\nTraining completed in: {(end_time - start_time):.2f} seconds")
             self.app_logger.info(f"Model saved in s3 bucket")
         else:
@@ -390,10 +419,10 @@ class UserApp:
 
                 training_performed = False
                 if self.use_model and now >= self.last_train_run + self.cycle_train_time:
-                    self._offload_train()
-                    training_performed = True
+                    self._offload_evaluate()
+                    if self.train_model:
+                        self._offload_train()
+                        training_performed = True
 
                 if training_performed or now >= self.last_predict_run + self.cycle_time:
                     self._offload_predict()
-
-                self.cond.wait(1)  # Sleep 1 second

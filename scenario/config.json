@@ -26,7 +26,7 @@
     "S3_PARAMETERS": {
         "endpoint_url": "",
         "bucket_name": "",
-        "model_filename": "",
+        "model_filename": "files/onnx_model_v2.2.0_sem{}.onnx",
         "access_key_id": "",
         "secret_access_key": ""
     },
@@ -55,5 +55,13 @@
         "temp_reward_coeff": 2.0,
         "storage_reward_coeff": 0.8,
         "ev_reward_coeff": 0.8
+    },
+    "EVAL_PARAMETERS": {
+        "history_timedelta_days": 30,
+        "energy_reward_coeff": 0.3,
+        "temp_reward_coeff": 2.0,
+        "storage_reward_coeff": 0.8,
+        "ev_reward_coeff": 0.8,
+        "mean_reward_threshold": -60.0
     }
 }

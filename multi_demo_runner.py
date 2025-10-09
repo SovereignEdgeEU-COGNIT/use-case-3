@@ -68,7 +68,6 @@ training_controller = TrainingController(speedup=speedup)
 
 households = []
 for id in sem_id_list:
-    subprocess.call(["mkdir", "-p", f"log/{id}"])
     hsim = HouseholdSimulator(
         sem_id=id,
         config_dir=Path(cmd_args.scenario_dir),
