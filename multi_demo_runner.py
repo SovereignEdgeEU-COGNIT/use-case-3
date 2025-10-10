@@ -35,7 +35,7 @@ speedup = config["SPEEDUP"]
 time_machine = TimeMachine(
     start_time=start_date,
     speedup=speedup,
-    initialize_stopped=False,
+    initialize_stopped=True,
 )
 
 print(f"Now: {datetime.fromtimestamp(time_machine.get_time_utc())}")
@@ -75,6 +75,9 @@ for id in sem_id_list:
 
 for hsim in households:
     hsim.start()  # TODO: add graceful finish
+
+print("Starting simulation")
+time_machine.resume() # Start the simulation
 
 
 def get_household_by_id(sem_id: int) -> HouseholdSimulator | None:
