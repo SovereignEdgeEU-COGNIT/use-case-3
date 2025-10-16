@@ -31,9 +31,9 @@
         "secret_access_key": ""
     },
     "BESMART_PARAMETERS": {
-        "workspace_key": "",
-        "login": "",
-        "password": "",
+        "workspace_key": "wubbalubbadubdub",
+        "login": "cognit_demo",
+        "password": "CognitDemo2025!",
         "temperature_moid": 139
     },
     "TRAIN_PARAMETERS": {

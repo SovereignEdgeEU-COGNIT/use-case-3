@@ -174,7 +174,6 @@ class HouseholdSimulator:
             get_temp_outside=temp_outside_sensor.get_temp,
         )
 
-        print(f"Initializing Simulation for sem_id: {sem_id}")
         self.simulation = SimulationRunner(
             start_date=start_date,
             time_machine=time_machine,
@@ -234,6 +233,18 @@ class HouseholdSimulator:
             )
             self.mbsim.mbSimControl.set_offload_freq(userapp_cycle)
             self.mbsim.mbSimControl.set_training_freq(cycle_train)
+
+    def get_offload_stats(self):
+        if self.app is not None:
+            return self.app.get_stats()
+        else:
+            return None
+
+    def get_new_errors(self):
+        if self.app is not None:
+            return self.app.get_new_errors()
+        else:
+            return None
 
     def start(self):
         self.simulation.start()

@@ -1,38 +1,34 @@
 import subprocess
 
 
-COMMAND = ["python3.10", "demo_runner.py", "--offload", "--start_date", "2024-09-23"]
+class Runner:
+    COMMAND = ["python3.10", "multi_demo_runner.py"]
+    processes = []
 
-processes = []
+    def __init__(self):
+        subprocess.call(["mkdir", "-p", "log"])
+
+    def __del__(self):
+        self.kill_all()
+
+    def kill_all(self):
+        for p in self.processes:
+            p.kill()
+            p.wait()
+        self.processes.clear()
+        
+    def kill_num(self, n):
+        n = max(n, len(self.processes))
+        for _ in range(n):
+            p = self.processes.pop()
+            p.kill()
+            p.wait()
+
+    def spawn(self, n):
+        for _ in range(n):
+            proc = subprocess.Popen(self.COMMAND, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self.processes.append(proc)
+            print(f"Proc {proc.pid} created")
 
 
-subprocess.call(["mkdir", "-p", "log"])
-
-
-def spawn(n, offload_cycle=None):
-    cmd = COMMAND.copy()
-    if offload_cycle is not None:
-        cycle = 3600
-        speedup = cycle // offload_cycle
-        cmd += ["--cycle", f"{cycle}", "--speedup", f"{speedup}"]
-
-    for _ in range(n):
-        proc = subprocess.Popen(COMMAND, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        processes.append(proc)
-        print(f"Proc {proc.pid} created")
-
-
-def status():
-    for p in processes:
-        ret = p.poll()
-        if ret is None:
-            print(f"Proc {p.pid} running")
-        else:
-            print(f"Proc {p.pid} returned {ret}")
-
-
-def killAll():
-    for p in processes:
-        p.kill()
-        p.wait()
-    processes.clear()
+runner = Runner()
