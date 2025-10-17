@@ -6,7 +6,11 @@ from datetime import datetime, timedelta
 from typing import Callable
 
 from home_energy_management.baseline_algorithm import make_decision as baseline_decision_function
-from home_energy_management.ppo_algorithm import make_decision as ai_decision_function, training_function
+from home_energy_management.ppo_algorithm import (
+    make_decision as ai_decision_function,
+    evaluate as evaluation_function,
+    train as training_function,
+)
 from home_energy_management.device_simulators.electric_vehicle import (
     ElectricVehicle,
     LiveEVDriving,
@@ -62,6 +66,7 @@ class HouseholdSimulator:
         besmart_access_parameters = config["BESMART_PARAMETERS"]
         s3_parameters = config["S3_PARAMETERS"]
         train_parameters = config["TRAIN_PARAMETERS"]
+        eval_parameters = config["EVAL_PARAMETERS"]
 
         stop_date = start_date + num_simulation_days
 
@@ -194,8 +199,10 @@ class HouseholdSimulator:
                 model_parameters=model_parameters,
                 besmart_parameters=besmart_parameters,
                 use_model=use_ai_algorithm,
+                evaluation_algo=evaluation_function if use_ai_algorithm else None,
                 training_algo=training_function if use_ai_algorithm else None,
                 s3_parameters=s3_parameters if use_ai_algorithm else None,
+                eval_parameters=eval_parameters if use_ai_algorithm else None,
                 train_parameters=train_parameters if use_ai_algorithm else None,
                 user_preferences=user_preferences,
                 pv=pv,

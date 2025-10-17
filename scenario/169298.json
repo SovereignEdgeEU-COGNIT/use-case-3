@@ -4,7 +4,7 @@
 
     "SIMULATION_CONFIG": {
         "local_userapp": true,
-        "modbus_dev": "",
+        "modbus_dev": "socket://0192.168.122.1:9999",
         "use_baseline_algo": false,
         "no_offload": false
     },
@@ -13,17 +13,17 @@
         "max_power": 12.8,
         "max_capacity": 24.0,
         "min_charge_level": 10.0,
-        "charging_switch_level": 60.0,
+        "charging_switch_level": 70.0,
         "efficiency": 0.85,
         "energy_loss": 0.0
     },
 
     "EV_CONFIG": {
         "0": {
-            "max_power": 22.0,
-            "max_capacity": 48.0,
+            "max_power": 11.0,
+            "max_capacity": 55.0,
             "min_charge_level": 10.0,
-            "driving_charge_level": 80.0,
+            "driving_charge_level": 75.0,
             "charging_switch_level": 75.0,
             "efficiency": 0.85,
             "energy_loss": 0.0
@@ -35,19 +35,19 @@
         "heating_coefficient": 0.98,
         "heat_loss_coefficient": 300.0,
         "temp_window": 0.75,
-        "heating_devices_power": [6.0, 5.0, 5.0]
+        "heating_devices_power": [5.0, 5.0, 5.0]
     },
 
     "INITIAL_STATE": {
-        "curr_room_temp": 19.0,
+        "curr_room_temp": 20.0,
         "live_temp_outside": 15.0,
-        "heating_preferences": 20.0,
+        "heating_preferences": 21.0,
         "storage_capacity": 12.0,
         "ev_state": {
             "0": {
-                "ev_battery_capacity": 24.0,
+                "ev_battery_capacity": 27.5,
                 "ev_driving_power": 0.0,
-                "ev_departure_time": "8:00"
+                "ev_departure_time": "06:00"
             }
         }
     },
@@ -55,32 +55,32 @@
     "MODEL_PARAMETERS": {
         "delta_charging_power_perc": 5.0,
         "storage_high_charge_level": 90.0,
-        "min_temp_setting": 17.0,
-        "max_temp_setting": 24.0
+        "min_temp_setting": 18.0,
+        "max_temp_setting": 23.0
     },
 
     "USER_PREFERENCES": {
         "ev_driving_schedule": {
             "0": {
-                "time": ["0:00", "8:00", "15:00", "20:00", "22:00"],
-                "driving_power": [0.0, 5.0, 0.0, 8.0, 0.0]
+                "time": ["0:00", "6:00", "14:30", "17:00", "19:00", "21:00", "22:00"],
+                "driving_power": [0.0, 4.0, 0.0, 5.0, 0.0, 2.0, 0.0]
             }
         },
         "pref_temp_schedule": {
-            "time": ["0:00", "7:00", "9:00", "17:00", "23:00"],
-            "temp": [18.0, 20.0, 17.5, 21.0, 19.0]
+            "time": ["0:00", "5:00", "8:00", "15:00", "21:00"],
+            "temp": [18.0, 20.0, 17.0, 21.0, 18.0]
         }
     },
 
     "BESMART_PARAMETERS": {
         "pv_generation": {
             "cid": 68,
-            "mid": 100,
+            "mid": 127,
             "moid": 70
         },
         "energy_consumption": {
             "cid": 68,
-            "mid": 99,
+            "mid": 126,
             "moid": 32
         }
     }

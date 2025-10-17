@@ -80,7 +80,7 @@ The most important **global** parameters are:
 The most important **per household** parameters are:
 
 * `USER_APP_CYCLE_LENGTH` – time (in "virtual" seconds) between consecutive calls of the decision algorithm,
-* `TRAIN_CYCLE_LENGTH` - time (in "virtual" seconds) between consecutive executions of training of AI model (ignored when using baseline version of algorithm),
+* `TRAIN_CYCLE_LENGTH` - time (in "virtual" seconds) between subsequent evaluation executions of the trained AI model and, depending on its result, training a new one (ignored when using baseline version of algorithm),
 * `SIMULATION_CONFIG.local_userapp` – boolean that defines what kind of userapp will be used for specific SEM. If `true` then local `user_app.py` is used, otherwise phoenix-demo application should be set up separately,
 * `SIMULATION_CONFIG.modbus_dev` – (used only when `SIMULATION_CONFIG.local_userapp` is `false`) path of the modbus device to communicate with the phoenix-demo application.
 

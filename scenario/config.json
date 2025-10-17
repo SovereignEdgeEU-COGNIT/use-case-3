@@ -2,7 +2,7 @@
     "START_DATE": "2024-09-23",
     "NUM_SIMULATION_DAYS": 90,
     "SPEEDUP": 60,
-    "SEM_ID_LIST": [123456, 235723, 337656, 683251, 730853, 832852],
+    "SEM_ID_LIST": [123456, 169298, 235723, 329889, 337656, 359395, 655399, 683251, 730853, 832852],
     "REQS_INIT": {
         "baseline": {
             "FLAVOUR": "Energy",
@@ -26,7 +26,7 @@
     "S3_PARAMETERS": {
         "endpoint_url": "",
         "bucket_name": "",
-        "model_filename": "",
+        "model_filename": "files/onnx_model_v2.2.0_sem{}.onnx",
         "access_key_id": "",
         "secret_access_key": ""
     },
@@ -38,7 +38,7 @@
     },
     "TRAIN_PARAMETERS": {
         "history_timedelta_days": 90,
-        "num_episodes": 3000,
+        "num_episodes": 6000,
         "critic_lr": 0.001,
         "actor_lr": 0.001,
         "gamma": 0.2,
@@ -55,5 +55,13 @@
         "temp_reward_coeff": 2.0,
         "storage_reward_coeff": 0.8,
         "ev_reward_coeff": 0.8
+    },
+    "EVAL_PARAMETERS": {
+        "history_timedelta_days": 30,
+        "energy_reward_coeff": 0.3,
+        "temp_reward_coeff": 2.0,
+        "storage_reward_coeff": 0.8,
+        "ev_reward_coeff": 0.8,
+        "mean_reward_threshold": -70.0
     }
 }
