@@ -20,8 +20,8 @@
 
     "EV_CONFIG": {
         "0": {
-            "max_power": 6.9,
-            "max_capacity": 40.0,
+            "max_power": 11.0,
+            "max_capacity": 51.0,
             "min_charge_level": 10.0,
             "driving_charge_level": 80.0,
             "charging_switch_level": 75.0,
@@ -45,7 +45,7 @@
         "storage_capacity": 6.0,
         "ev_state": {
             "0": {
-                "ev_battery_capacity": 20.0,
+                "ev_battery_capacity": 25.5,
                 "ev_driving_power": 0.0,
                 "ev_departure_time": "06:00"
             }

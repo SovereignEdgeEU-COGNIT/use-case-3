@@ -4,9 +4,8 @@ from pathlib import Path
 import subprocess
 import threading
 from datetime import datetime
-import time
 
-subprocess.call(["mkdir", "-p", "log"]) # TODO: 
+subprocess.call(["mkdir", "-p", "log"])  # TODO:
 
 from household_simulator import HouseholdSimulator
 from phoenixsystems.sem.time import TimeMachine
@@ -26,7 +25,6 @@ parser.add_argument(
 
 cmd_args = parser.parse_args()
 
-
 with open(f"{cmd_args.scenario_dir}/config.json", "r") as f:
     config = json.load(f)
 
@@ -34,15 +32,13 @@ sem_id_list = config["SEM_ID_LIST"]
 start_date = datetime.fromisoformat(config["START_DATE"])
 speedup = config["SPEEDUP"]
 
-
-print(start_date)
 time_machine = TimeMachine(
     start_time=start_date,
     speedup=speedup,
     initialize_stopped=False,
 )
 
-print(f"Now: {time_machine.get_time_utc()}")
+print(f"Now: {datetime.fromtimestamp(time_machine.get_time_utc())}")
 
 class TrainingController:
     trainings_in_progress = 0
@@ -51,7 +47,7 @@ class TrainingController:
     
     def __init__(self, speedup: int):
         self.speedup = speedup
-    
+
     def training_state_changed(self, state: int) -> None:
         with self.training_cb_lock:
             if state == 1:
@@ -78,7 +74,7 @@ for id in sem_id_list:
     households.append(hsim)
 
 for hsim in households:
-    hsim.start() # TODO: add graceful finish
+    hsim.start()  # TODO: add graceful finish
 
 
 def get_household_by_id(sem_id: int) -> HouseholdSimulator | None:
@@ -96,10 +92,10 @@ def offload_training_now(sem_id: int):
     h = get_household_by_id(sem_id)
     h.offload_training()
 
-def set_decision_cycle(sem_id:int, cycle_sec: int):
+def set_decision_cycle(sem_id: int, cycle_sec: int):
     h = get_household_by_id(sem_id)
     h.set_decision_cycle(cycle_sec)
 
-def set_training_cycle(sem_id:int, cycle_sec: int):
+def set_training_cycle(sem_id: int, cycle_sec: int):
     h = get_household_by_id(sem_id)
     h.set_training_cycle(cycle_sec)

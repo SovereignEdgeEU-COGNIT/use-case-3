@@ -71,7 +71,6 @@ class UserApp:
     app_thread: threading.Thread
     use_cognit: bool
     use_model: bool
-    train_model: bool = False
     start_time: float
     cond: threading.Condition
     app_logger: logging.Logger
@@ -210,7 +209,7 @@ class UserApp:
 
     def _update_predict_algo_input(self, now: float) -> AlgoPredictParams:
         self.last_predict_run = now
-        next_timestamp = self.start_date + timedelta(seconds=self.metrology.get_uptime() + self.cycle_time)
+        next_timestamp = datetime.fromtimestamp(now) + timedelta(seconds=self.cycle_time)
 
         storage_parameters = self.energy_storage.get_info()
         ev_parameters_per_id = {}
@@ -248,7 +247,7 @@ class UserApp:
             algo_parameters: dict[str, Any],
     ) -> AlgoTrainEvalParams:
         self.last_train_run = now
-        last_timestamp = self.start_date + timedelta(seconds=self.metrology.get_uptime() - self.cycle_time)
+        last_timestamp = datetime.fromtimestamp(now) - timedelta(seconds=self.cycle_time)
         first_timestamp = last_timestamp - timedelta(days=algo_parameters["history_timedelta_days"])
         self.besmart_parameters["since"] = first_timestamp.timestamp()
         self.besmart_parameters["till"] = last_timestamp.timestamp()
@@ -281,12 +280,17 @@ class UserApp:
             }
         )
 
-    def _run_algo(self, algo_function: Callable, algo_input: AlgoPredictParams | AlgoTrainEvalParams) -> Any:
+    def _run_algo(
+            self,
+            algo_function: Callable,
+            algo_input: AlgoPredictParams | AlgoTrainEvalParams,
+            timeout: int = 6000,
+    ) -> Any:
         if not self.use_cognit:
             res = algo_function(*astuple(algo_input))
         else:
             try:
-                ret = self.device_runtime.call(algo_function, *astuple(algo_input))
+                ret = self.device_runtime.call(algo_function, *astuple(algo_input), timeout=timeout)
                 res = ret.res
                 self.app_logger.info(f"\nRuntime result: {res}")
                 if ret.err:
@@ -310,7 +314,10 @@ class UserApp:
     def _offload_predict(self):
         now = self._get_sem_time()
         algo_input = self._update_predict_algo_input(now)
-        algo_res = self._run_algo(self.decision_algo, algo_input)
+        start_time = time.time()
+        algo_res = self._run_algo(self.decision_algo, algo_input, timeout=45)
+        end_time = time.time()
+        self.app_logger.info(f"Prediction completed in: {(end_time - start_time):.2f} seconds")
 
         self.app_logger.info("\n\x1b[2J\x1b[H")
         self.app_logger.info(f"{self.start_date + timedelta(seconds=self.metrology.get_uptime())}")
@@ -364,9 +371,9 @@ class UserApp:
                 for ev_id in ev_battery_conf:
                     self.app_logger.info(f"\t{ev_id}: {json.dumps(ev_battery_conf[ev_id], indent=4)}")
         else:
-            self.app_logger.warning("Decision algorithm call failed")
+            self.app_logger.warning("\nDecision-making algorithm call failed")
 
-    def _offload_evaluate(self):
+    def _offload_evaluate(self) -> bool:
         now = self._get_sem_time()
         algo_input = self._update_train_eval_algo_input(now, self.eval_parameters)
 
@@ -376,17 +383,14 @@ class UserApp:
         self.app_logger.info(f"{json.dumps(json.loads(algo_input.algo_parameters), indent=4)}")
 
         start_time = time.time()
-        algo_res = self._run_algo(self.evaluation_algo, algo_input)
+        algo_res = self._run_algo(self.evaluation_algo, algo_input, timeout=90)
         end_time = time.time()
-        self.app_logger.info(f"\nEvaluation completed in: {(end_time - start_time):.2f} seconds")
+        self.app_logger.info(f"Evaluation completed in: {(end_time - start_time):.2f} seconds")
         self.app_logger.info(f"Model is valid: {algo_res}\n")
 
-        if algo_res:
-            self.train_model = False
-        else:
-            self.train_model = True
+        return algo_res
 
-    def _offload_train(self):
+    def _offload_train(self) -> bool:
         now = self._get_sem_time()
         algo_input = self._update_train_eval_algo_input(now, self.train_parameters)
 
@@ -397,16 +401,18 @@ class UserApp:
         if self.training_state_cb is not None:
             self.training_state_cb(1)
         start_time = time.time()
-        algo_res = self._run_algo(self.training_algo, algo_input)
+        algo_res = self._run_algo(self.training_algo, algo_input, timeout=600)
         end_time = time.time()
         if self.training_state_cb is not None:
             self.training_state_cb(0)
 
         if algo_res:
-            self.app_logger.info(f"\nTraining completed in: {(end_time - start_time):.2f} seconds")
+            self.app_logger.info(f"Training completed in: {(end_time - start_time):.2f} seconds")
             self.app_logger.info(f"Model saved in s3 bucket")
+            return True
         else:
             self.app_logger.warning("Training decision model call failed")
+            return False
 
     def _app_loop(self):
         now = self._get_sem_time()
@@ -417,12 +423,12 @@ class UserApp:
             while not self.shutdown_flag:
                 now = self._get_sem_time()
 
-                training_performed = False
+                new_model = False
                 if self.use_model and now >= self.last_train_run + self.cycle_train_time:
-                    self._offload_evaluate()
-                    if self.train_model:
-                        self._offload_train()
-                        training_performed = True
+                    if not self._offload_evaluate():
+                        new_model = self._offload_train()
 
-                if training_performed or now >= self.last_predict_run + self.cycle_time:
+                if new_model or now >= self.last_predict_run + self.cycle_time:
                     self._offload_predict()
+
+                self.cond.wait(1)
