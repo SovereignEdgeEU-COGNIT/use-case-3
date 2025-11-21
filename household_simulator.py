@@ -92,6 +92,8 @@ class HouseholdSimulator:
 
         s3_parameters["model_filename"] = s3_parameters["model_filename"].format(sem_id)
         besmart_parameters.update(besmart_access_parameters)
+        reqs_init = reqs_init["AI" if use_ai_algorithm else "baseline"]
+        reqs_init["ID"] = sem_id
 
         # Initialize the devices
         other_devices = []
@@ -213,7 +215,7 @@ class HouseholdSimulator:
                 cycle=userapp_cycle,
                 cycle_train=cycle_train,
                 use_cognit=use_cognit,
-                reqs_init=reqs_init["AI" if use_ai_algorithm else "baseline"],
+                reqs_init=reqs_init,
                 heating_user_preferences=heating_preferences,
                 ev_departure_plans=ev_departure_plans,
                 training_state_cb=training_state_changed_cb,

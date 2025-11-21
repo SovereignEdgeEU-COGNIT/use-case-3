@@ -6,20 +6,22 @@
     "REQS_INIT": {
         "baseline": {
             "FLAVOUR": "Energy",
-            "MIN_ENERGY_RENEWABLE_USAGE": 85,
-            "MAX_FUNCTION_EXECUTION_TIME": 3.5,
+            "MIN_ENERGY_RENEWABLE_USAGE": 75,
+            "MAX_LATENCY": 45,
+            "MAX_FUNCTION_EXECUTION_TIME": 15.0,
             "GEOLOCATION": {
-                "latitude": 59.3510,
-                "longitude": 18.0644
+                "latitude": 52.19,
+                "longitude": 21.05
             }
         },
         "AI": {
             "FLAVOUR": "EnergyTorch",
-            "MIN_ENERGY_RENEWABLE_USAGE": 85,
-            "MAX_FUNCTION_EXECUTION_TIME": 3.5,
+            "MIN_ENERGY_RENEWABLE_USAGE": 75,
+            "MAX_LATENCY": 600,
+            "MAX_FUNCTION_EXECUTION_TIME": 15.0,
             "GEOLOCATION": {
-                "latitude": 59.3510,
-                "longitude": 18.0644
+                "latitude": 52.19,
+                "longitude": 21.05
             }
         }
     },
