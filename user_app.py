@@ -38,8 +38,55 @@ class AlgoTrainEvalParams:
     user_preferences: str
 
 
+FUNTION_TYPES = ["decision", "train", "eval"]
+
+
+@dataclass
+class OffloadError:
+    msg: str | None
+    timestamp: datetime
+
+
+class OffloadFunStatistics:
+    all_num: int = 0
+    success_num: int = 0
+    err_types: list[OffloadError]
+    new_errors: int = 0
+    lock: threading.Lock
+
+    def __init__(self):
+        self.err_types = []  # Oh my...
+        self.lock = threading.Lock()
+
+    def handle_success(self):
+        with self.lock:
+            self.all_num += 1
+            self.success_num += 1
+
+    def handle_error(self, msg: str | None):
+        with self.lock:
+            self.all_num += 1
+            self.new_errors += 1
+            assert type(msg) == str
+            ee = OffloadError(msg=msg, timestamp=datetime.now())
+            self.err_types.append(ee)
+
+    def get_new_errors(self) -> list[OffloadError]:
+        with self.lock:
+            if self.new_errors > 0:
+                ret = self.err_types[-self.new_errors :]
+                self.new_errors = 0
+            else:
+                ret = []
+        return ret
+
+    def get_stats(self):
+        with self.lock:
+            return {"success": self.success_num, "all": self.all_num}
+
+
 class UserApp:
-    sem_id: int
+    device_id: str
     start_date: datetime
     device_runtime: DeviceRuntime  # Cognit Serverless Runtime
     metrology: metersim.Metersim  # Metrology
@@ -58,6 +105,9 @@ class UserApp:
     evaluation_algo: Callable
     training_algo: Callable
     decision_algo: Callable
+
+    # Offload statistics
+    offload_stats: dict[str, OffloadFunStatistics]
 
     # Devices
     pv: DeviceUserApi
@@ -89,7 +139,7 @@ class UserApp:
 
     def __init__(
         self,
-        sem_id: int,
+        device_id: str,
         start_date: datetime,
         metrology: metersim.Metersim,
         decision_algo: Callable,
@@ -115,7 +165,7 @@ class UserApp:
         train_parameters: dict[str, Any] = None,
         training_state_cb: Callable = None,
     ):
-        self.sem_id = sem_id
+        self.device_id = device_id
         self.start_date = start_date
         self.metrology = metrology
         self.decision_algo = decision_algo
@@ -144,7 +194,9 @@ class UserApp:
         self.shutdown_flag = False
         self.cond = threading.Condition()
 
-        app_log_handler = logging.FileHandler(f"log/{os.getpid()}/{self.sem_id}/user_app.log")
+        self.offload_stats = {foo: OffloadFunStatistics() for foo in FUNTION_TYPES}
+
+        app_log_handler = logging.FileHandler(f"log/{os.getpid()}/{self.device_id}/user_app.log")
         app_log_formatter = logging.Formatter("")
         app_log_handler.setFormatter(app_log_formatter)
         self.app_logger = logging.Logger("user_app")
@@ -161,7 +213,7 @@ class UserApp:
     def _init_cognit_runtime(self, reqs_init: dict[str, Any]) -> None:
         self.cognit_logger = logging.getLogger("cognit-logger")
         self.cognit_logger.handlers.clear()
-        handler = logging.FileHandler(f"log/{os.getpid()}/{self.sem_id}/cognit.log")
+        handler = logging.FileHandler(f"log/{os.getpid()}/{self.device_id}/cognit.log")
         formatter = logging.Formatter(
             fmt="[%(asctime)s][%(levelname)s] %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
@@ -182,6 +234,12 @@ class UserApp:
         self.device_runtime.init(reqs_init)
 
         self.cognit_logger.info("Runtime should be ready now!")
+
+    def get_stats(self) -> dict[str, int]:
+        return {foo: self.offload_stats[foo].get_stats() for foo in FUNTION_TYPES}
+
+    def get_new_errors(self) -> list[OffloadError]:
+        return {foo: self.offload_stats[foo].get_new_errors() for foo in FUNTION_TYPES}
 
     def _get_sem_time(self) -> int:
         return self.metrology.get_time_utc()
@@ -242,9 +300,9 @@ class UserApp:
         return algo_input
 
     def _update_train_eval_algo_input(
-            self,
-            now: float,
-            algo_parameters: dict[str, Any],
+        self,
+        now: float,
+        algo_parameters: dict[str, Any],
     ) -> AlgoTrainEvalParams:
         self.last_train_run = now
         last_timestamp = datetime.fromtimestamp(now) - timedelta(seconds=self.cycle_time)
@@ -281,10 +339,11 @@ class UserApp:
         )
 
     def _run_algo(
-            self,
-            algo_function: Callable,
-            algo_input: AlgoPredictParams | AlgoTrainEvalParams,
-            timeout: int = 6000,
+        self,
+        algo_function: Callable,
+        algo_input: AlgoPredictParams | AlgoTrainEvalParams,
+        function_type: str,
+        timeout: int = 6000,
     ) -> Any:
         if not self.use_cognit:
             res = algo_function(*astuple(algo_input))
@@ -295,10 +354,19 @@ class UserApp:
                 self.app_logger.info(f"\nRuntime result: {res}")
                 if ret.err:
                     self.app_logger.error(f"\nError during offloading: {ret.err}")
-                self.global_logger.info("Offload OK")
+                    self.global_logger.info("Offload ERROR")
+                    self.offload_stats[function_type].handle_error(ret.err)
+                elif res is None:
+                    self.app_logger.error(f"\nError during offloading: No result")
+                    self.global_logger.info("Offload ERROR")
+                    self.offload_stats[function_type].handle_error("No result")
+                else:
+                    self.global_logger.info("Offload OK")
+                    self.offload_stats[function_type].handle_success()
             except:
-                self.global_logger.error("Offload ERROR")
-                raise
+                self.global_logger.error("Offload FATAL ERROR")
+                self.offload_stats[function_type].handle_error("FATAL")
+                return None
         return res
 
     def start(self):
@@ -315,7 +383,7 @@ class UserApp:
         now = self._get_sem_time()
         algo_input = self._update_predict_algo_input(now)
         start_time = time.time()
-        algo_res = self._run_algo(self.decision_algo, algo_input, timeout=45)
+        algo_res = self._run_algo(self.decision_algo, algo_input, "decision", timeout=45)
         end_time = time.time()
         self.app_logger.info(f"Prediction completed in: {(end_time - start_time):.2f} seconds")
 
@@ -383,8 +451,12 @@ class UserApp:
         self.app_logger.info(f"{json.dumps(json.loads(algo_input.algo_parameters), indent=4)}")
 
         start_time = time.time()
-        algo_res = self._run_algo(self.evaluation_algo, algo_input, timeout=90)
+        algo_res = self._run_algo(self.evaluation_algo, algo_input, "eval", timeout=90)
         end_time = time.time()
+
+        if algo_res is None:
+            return False
+
         self.app_logger.info(f"Evaluation completed in: {(end_time - start_time):.2f} seconds")
         self.app_logger.info(f"Model is valid: {algo_res}\n")
 
@@ -401,7 +473,7 @@ class UserApp:
         if self.training_state_cb is not None:
             self.training_state_cb(1)
         start_time = time.time()
-        algo_res = self._run_algo(self.training_algo, algo_input, timeout=600)
+        algo_res = self._run_algo(self.training_algo, algo_input, "train", timeout=600)
         end_time = time.time()
         if self.training_state_cb is not None:
             self.training_state_cb(0)

@@ -50,7 +50,7 @@ class SimulationRunner:
             temp_outside: TempSensor,
             speedup: int,
             scenario_dir: str,
-            sem_id: int,
+            device_id: str,
     ):
         self.start_date = start_date
         self.time_machine = time_machine
@@ -65,7 +65,7 @@ class SimulationRunner:
         self.shutdown_flag = False
         self.scenario_dir = scenario_dir
 
-        log_handler = logging.FileHandler(f"log/{os.getpid()}/{sem_id}/simulation.log")
+        log_handler = logging.FileHandler(f"log/{os.getpid()}/{device_id}/simulation.log")
         log_formatter = logging.Formatter("")
         log_handler.setFormatter(log_formatter)
         self.logger = logging.Logger("simulation")

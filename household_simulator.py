@@ -38,6 +38,7 @@ from device_modbus import ModbusSimulator
 
 class HouseholdSimulator:
     sem_id: int
+    device_id: str
     time_machine: TimeMachine | None
     app: UserApp | None = None
     mbsim: ModbusSimulator | None = None
@@ -45,16 +46,17 @@ class HouseholdSimulator:
     def __init__(
         self,
         sem_id: int,
+        device_id: str,
         config_dir: Path,
         time_machine: TimeMachine | None = None,
         live: bool = False,
         training_state_changed_cb: Callable | None = None,
     ):
-        self.sem_id = sem_id
+        self.device_id = device_id
         self.time_machine = time_machine
 
         subprocess.call(["mkdir", "-p", "log"])
-        subprocess.call(["mkdir", "-p", f"log/{os.getpid()}/{sem_id}"])
+        subprocess.call(["mkdir", "-p", f"log/{os.getpid()}/{device_id}"])
 
         with open(config_dir / "config.json", "r") as f:
             config = json.load(f)
@@ -93,7 +95,7 @@ class HouseholdSimulator:
         s3_parameters["model_filename"] = s3_parameters["model_filename"].format(sem_id)
         besmart_parameters.update(besmart_access_parameters)
         reqs_init = reqs_init["AI" if use_ai_algorithm else "baseline"]
-        reqs_init["ID"] = sem_id
+        reqs_init["ID"] = device_id
 
         # Initialize the devices
         other_devices = []
@@ -176,7 +178,6 @@ class HouseholdSimulator:
             get_temp_outside=temp_outside_sensor.get_temp,
         )
 
-        print(f"Initializing Simulation for sem_id: {sem_id}")
         self.simulation = SimulationRunner(
             start_date=start_date,
             time_machine=time_machine,
@@ -189,12 +190,12 @@ class HouseholdSimulator:
             other_devices=other_devices,
             temp_outside=temp_outside_sensor,
             speedup=speedup,
-            sem_id=sem_id,
+            device_id=device_id,
         )
 
         if run_local_userapp:
             self.app = UserApp(
-                sem_id=sem_id,
+                device_id=device_id,
                 start_date=start_date,
                 metrology=self.simulation.sem,
                 decision_algo=ai_decision_function if use_ai_algorithm else baseline_decision_function,
@@ -236,6 +237,18 @@ class HouseholdSimulator:
             )
             self.mbsim.mbSimControl.set_offload_freq(userapp_cycle)
             self.mbsim.mbSimControl.set_training_freq(cycle_train)
+
+    def get_offload_stats(self):
+        if self.app is not None:
+            return self.app.get_stats()
+        else:
+            return None
+
+    def get_new_errors(self):
+        if self.app is not None:
+            return self.app.get_new_errors()
+        else:
+            return None
 
     def start(self):
         self.simulation.start()
