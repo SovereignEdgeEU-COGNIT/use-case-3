@@ -112,3 +112,7 @@ set_decision_cycle(id: int, cycle_sec: int)  # Sets the frequency of decision ma
 
 set_training_cycle(id: int, cycle_sec: int)  # Sets the frequency of the training.
 ```
+
+## Running the Demo using `docker`
+
+The demo can be run with the help of the `Dockerfile` provided in this repository.
