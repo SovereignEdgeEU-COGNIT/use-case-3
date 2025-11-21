@@ -59,7 +59,7 @@ python3 multi_demo_runner.py
 
 ### Logging
 
-For each demo process log files are produced inside `log/{pid}/{sem_id}` directory:
+For each demo process log files are produced inside `log/{pid}/{device_id}` directory:
 
 * `simulation.log` – current state of the devices and the simulation environment
 * `user_app.log` – input and output of the decision algorithm (only when using local userapp)
@@ -71,11 +71,16 @@ Additionally in file `log/cognit.log` all the instances register each offload ac
 
 The general (global) configuration of the demo can be found in `scenario/config.json`. The detailed definitions of simulation, user application and devices for specific household and smart energy meter can be found in `{sem_id}.json`.
 
+```{note}
+The `sem_id` is the id of the household scenario. The `device_id` is a unique identifier of a simulation instantion and it is constructed as `{sem_id}_{some_number}`, so it is easy to infer `sem_id` from `device_id`.
+```
+
 The most important **global** parameters are:
 
 * `START_DATE` - start date of the simulation,
-* `SPEEDUP` – the speedup factor of the simulation,
-* `SEM_ID_LIST` - list of IDs of smart energy meters, pointing to the specification files.
+* `SPEEDUP` - the speedup factor of the simulation,
+* `SEM_ID_LIST` - list of IDs of smart energy meters, pointing to the specification files,
+* `SEM_NUM` - number of simulation instances to run.
 
 The most important **per household** parameters are:
 
@@ -97,11 +102,13 @@ python3 -i multi_demo_runner.py
 Then, one would be able to call the following functions for each SEM, regardless of whether the SEM uses local or external userapp.
 
 ```python
-offload_decision_now(sem_id: int)  # Triggers decision algorithm offloading immediately.
+# The `id` argument refers to the index on the housholds list
 
-offload_training_now(sem_id: int)  # Triggers training algorithm offloading immediately.
+offload_decision_now(id: int)  # Triggers decision algorithm offloading immediately.
 
-set_decision_cycle(sem_id:int, cycle_sec: int)  # Sets the frequency of decision making.
+offload_training_now(id: int)  # Triggers training algorithm offloading immediately.
 
-set_training_cycle(sem_id:int, cycle_sec: int)  # Sets the frequency of the training.
+set_decision_cycle(id: int, cycle_sec: int)  # Sets the frequency of decision making.
+
+set_training_cycle(id: int, cycle_sec: int)  # Sets the frequency of the training.
 ```

@@ -4,11 +4,17 @@ from pathlib import Path
 import subprocess
 import threading
 from datetime import datetime
+import os
+
+from user_app import OffloadFunStatistics, FUNTION_TYPES
+import user_app
 
 subprocess.call(["mkdir", "-p", "log"])  # TODO:
 
 from household_simulator import HouseholdSimulator
 from phoenixsystems.sem.time import TimeMachine
+
+MAX_SEM_NUM = 10000
 
 # Parse the arguments
 parser = argparse.ArgumentParser()
@@ -20,7 +26,11 @@ parser.add_argument(
 parser.add_argument(
     "--scenario_dir",
     default="scenario",
-    help="run userapp locally",
+    help="scenario's configuration directory",
+)
+parser.add_argument(
+    "--sem_num",
+    help="spawn N instances of SEM (overrides the scenario's configuration)",
 )
 
 cmd_args = parser.parse_args()
@@ -32,6 +42,13 @@ sem_id_list = config["SEM_ID_LIST"]
 start_date = datetime.fromisoformat(config["START_DATE"])
 speedup = config["SPEEDUP"]
 
+sem_num = config["SEM_NUM"]
+if cmd_args.sem_num is not None:
+    sem_num = int(cmd_args.sem_num)
+if sem_num <= 0 or sem_num > MAX_SEM_NUM:
+    raise Exception("Invalid sem_num argument")
+
+
 time_machine = TimeMachine(
     start_time=start_date,
     speedup=speedup,
@@ -40,11 +57,12 @@ time_machine = TimeMachine(
 
 print(f"Now: {datetime.fromtimestamp(time_machine.get_time_utc())}")
 
+
 class TrainingController:
     trainings_in_progress = 0
     training_cb_lock = threading.Lock()
     speedup: int
-    
+
     def __init__(self, speedup: int):
         self.speedup = speedup
 
@@ -62,10 +80,22 @@ class TrainingController:
 
 training_controller = TrainingController(speedup=speedup)
 
-households = []
-for id in sem_id_list:
+households: list[HouseholdSimulator] = []
+global offload_errors
+offload_errors = []
+
+sem_type_idx = 0
+loop_num = 0
+for i in range(sem_num):
+    sem_id = sem_id_list[sem_type_idx]
+
+    device_id = f"{sem_id}_{loop_num:03d}"
+
+    print(f"Initializing Simulation with id: {i} and device_id: {device_id}")
+
     hsim = HouseholdSimulator(
-        sem_id=id,
+        sem_id=sem_id,
+        device_id=device_id,
         config_dir=Path(cmd_args.scenario_dir),
         time_machine=time_machine,
         live=cmd_args.live,
@@ -73,32 +103,84 @@ for id in sem_id_list:
     )
     households.append(hsim)
 
+    sem_type_idx += 1
+    if sem_type_idx == len(sem_id_list):
+        sem_type_idx = 0
+        loop_num += 1
+
+
 for hsim in households:
     hsim.start()  # TODO: add graceful finish
 
-print("Starting simulation")
-time_machine.resume() # Start the simulation
+print(f"Starting simulation with PID: {os.getpid()}")
+time_machine.resume()  # Start the simulation
 
 
-def get_household_by_id(sem_id: int) -> HouseholdSimulator | None:
-    for h in households:
-        if h.sem_id == sem_id:
-            return h
-    return None
+def offload_decision_now(id: int):
+    households[id].offload_decision()
 
 
-def offload_decision_now(sem_id: int):
-    h = get_household_by_id(sem_id)
-    h.offload_decision()
+def offload_training_now(id: int):
+    households[id].offload_training()
 
-def offload_training_now(sem_id: int):
-    h = get_household_by_id(sem_id)
-    h.offload_training()
 
-def set_decision_cycle(sem_id: int, cycle_sec: int):
-    h = get_household_by_id(sem_id)
-    h.set_decision_cycle(cycle_sec)
+def set_decision_cycle(id: int, cycle_sec: int):
+    households[id].set_decision_cycle(cycle_sec)
 
-def set_training_cycle(sem_id: int, cycle_sec: int):
-    h = get_household_by_id(sem_id)
-    h.set_training_cycle(cycle_sec)
+
+def set_training_cycle(id: int, cycle_sec: int):
+    households[id].set_training_cycle(cycle_sec)
+
+
+def get_stats():
+
+    total = {foo: 0 for foo in user_app.FUNTION_TYPES}
+    total_success = {foo: 0 for foo in user_app.FUNTION_TYPES}
+
+    print("STATS:")
+    for i in range(len(households)):
+        h = households[i]
+        stats: dict[str, OffloadFunStatistics] = h.get_offload_stats()
+
+        stats_str = f"H{i:03d} : {h.device_id}"
+
+        for foo in user_app.FUNTION_TYPES:
+            stats_str += f'\t{foo[:2]}: {stats[foo]["success"]} / {stats[foo]["all"]}'
+            total[foo] += stats[foo]["all"]
+            total_success[foo] += stats[foo]["success"]
+        print(stats_str)
+
+    print("")
+    total_stats_str = f"TOTAL: \t\t"
+    for foo in user_app.FUNTION_TYPES:
+        total_stats_str += f"\t{foo[:2]}: {total_success[foo]} / {total[foo]}"
+    print(total_stats_str)
+
+
+def _update_erros() -> list:
+    new_errors = []
+    for i in range(len(households)):
+        h = households[i]
+        errs = h.get_new_errors()
+        for foo in user_app.FUNTION_TYPES:
+            if errs[foo] is None:
+                continue
+            for e in errs[foo]:
+                s = f"{e.timestamp} \t H{i:03d} {foo[:2]} \t {e.msg}"
+                new_errors.append(s)
+
+    new_errors.sort()
+    global offload_errors
+    offload_errors += new_errors
+    return new_errors
+
+
+def get_new_errors():
+    for e in _update_erros():
+        print(e)
+
+
+def get_all_errors():
+    _update_erros()
+    for e in offload_errors:
+        print(e)
