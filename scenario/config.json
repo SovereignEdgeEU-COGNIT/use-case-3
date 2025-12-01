@@ -29,14 +29,13 @@
     "S3_PARAMETERS": {
         "endpoint_url": "",
         "bucket_name": "",
-        "model_filename": "files/onnx_model_v2.2.0_sem{}.onnx",
+        "model_filename": "files/onnx_model_v2.2.3_sem{}.onnx",
         "access_key_id": "",
         "secret_access_key": ""
     },
     "BESMART_PARAMETERS": {
         "workspace_key": "",
-        "login": "",
-        "password": "",
+        "token": "",
         "temperature_moid": 139
     },
     "TRAIN_PARAMETERS": {
