@@ -32,7 +32,7 @@ from home_energy_management.device_simulators.utils import prepare_device_simula
 from phoenixsystems.sem.time import TimeMachine
 
 from simulation_runner import SimulationRunner
-from user_app import UserApp
+# from user_app import UserApp
 from device_modbus import ModbusSimulator
 
 
@@ -40,7 +40,7 @@ class HouseholdSimulator:
     sem_id: int
     device_id: str
     time_machine: TimeMachine | None
-    app: UserApp | None = None
+    app: None = None
     mbsim: ModbusSimulator | None = None
 
     def __init__(
@@ -194,33 +194,34 @@ class HouseholdSimulator:
         )
 
         if run_local_userapp:
-            self.app = UserApp(
-                device_id=device_id,
-                start_date=start_date,
-                metrology=self.simulation.sem,
-                decision_algo=ai_decision_function if use_ai_algorithm else baseline_decision_function,
-                model_parameters=model_parameters,
-                besmart_parameters=besmart_parameters,
-                use_model=use_ai_algorithm,
-                evaluation_algo=evaluation_function if use_ai_algorithm else None,
-                training_algo=training_function if use_ai_algorithm else None,
-                s3_parameters=s3_parameters if use_ai_algorithm else None,
-                eval_parameters=eval_parameters if use_ai_algorithm else None,
-                train_parameters=train_parameters if use_ai_algorithm else None,
-                user_preferences=user_preferences,
-                pv=pv,
-                electric_vehicle_per_id=electric_vehicle_per_id,
-                energy_storage=storage,
-                heating=heating,
-                temp_outside_sensor=temp_outside_sensor,
-                cycle=userapp_cycle,
-                cycle_train=cycle_train,
-                use_cognit=use_cognit,
-                reqs_init=reqs_init,
-                heating_user_preferences=heating_preferences,
-                ev_departure_plans=ev_departure_plans,
-                training_state_cb=training_state_changed_cb,
-            )
+            # self.app = UserApp(
+            #     device_id=device_id,
+            #     start_date=start_date,
+            #     metrology=self.simulation.sem,
+            #     decision_algo=ai_decision_function if use_ai_algorithm else baseline_decision_function,
+            #     model_parameters=model_parameters,
+            #     besmart_parameters=besmart_parameters,
+            #     use_model=use_ai_algorithm,
+            #     evaluation_algo=evaluation_function if use_ai_algorithm else None,
+            #     training_algo=training_function if use_ai_algorithm else None,
+            #     s3_parameters=s3_parameters if use_ai_algorithm else None,
+            #     eval_parameters=eval_parameters if use_ai_algorithm else None,
+            #     train_parameters=train_parameters if use_ai_algorithm else None,
+            #     user_preferences=user_preferences,
+            #     pv=pv,
+            #     electric_vehicle_per_id=electric_vehicle_per_id,
+            #     energy_storage=storage,
+            #     heating=heating,
+            #     temp_outside_sensor=temp_outside_sensor,
+            #     cycle=userapp_cycle,
+            #     cycle_train=cycle_train,
+            #     use_cognit=use_cognit,
+            #     reqs_init=reqs_init,
+            #     heating_user_preferences=heating_preferences,
+            #     ev_departure_plans=ev_departure_plans,
+            #     training_state_cb=training_state_changed_cb,
+            # )
+            pass
         else:
             self.modbus_path = modbus_path
             self.mbsim = ModbusSimulator(

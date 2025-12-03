@@ -6,8 +6,8 @@ import threading
 from datetime import datetime
 import os
 
-from user_app import OffloadFunStatistics, FUNTION_TYPES
-import user_app
+# from user_app import OffloadFunStatistics, FUNTION_TYPES
+# import user_app
 
 subprocess.call(["mkdir", "-p", "log"])  # TODO:
 
@@ -116,71 +116,71 @@ print(f"Starting simulation with PID: {os.getpid()}")
 time_machine.resume()  # Start the simulation
 
 
-def offload_decision_now(id: int):
-    households[id].offload_decision()
+# def offload_decision_now(id: int):
+#     households[id].offload_decision()
 
 
-def offload_training_now(id: int):
-    households[id].offload_training()
+# def offload_training_now(id: int):
+#     households[id].offload_training()
 
 
-def set_decision_cycle(id: int, cycle_sec: int):
-    households[id].set_decision_cycle(cycle_sec)
+# def set_decision_cycle(id: int, cycle_sec: int):
+#     households[id].set_decision_cycle(cycle_sec)
 
 
-def set_training_cycle(id: int, cycle_sec: int):
-    households[id].set_training_cycle(cycle_sec)
+# def set_training_cycle(id: int, cycle_sec: int):
+#     households[id].set_training_cycle(cycle_sec)
 
 
-def get_stats():
+# def get_stats():
 
-    total = {foo: 0 for foo in user_app.FUNTION_TYPES}
-    total_success = {foo: 0 for foo in user_app.FUNTION_TYPES}
+#     total = {foo: 0 for foo in user_app.FUNTION_TYPES}
+#     total_success = {foo: 0 for foo in user_app.FUNTION_TYPES}
 
-    print("STATS:")
-    for i in range(len(households)):
-        h = households[i]
-        stats: dict[str, OffloadFunStatistics] = h.get_offload_stats()
+#     print("STATS:")
+#     for i in range(len(households)):
+#         h = households[i]
+#         stats: dict[str, OffloadFunStatistics] = h.get_offload_stats()
 
-        stats_str = f"H{i:03d} : {h.device_id}"
+#         stats_str = f"H{i:03d} : {h.device_id}"
 
-        for foo in user_app.FUNTION_TYPES:
-            stats_str += f'\t{foo[:2]}: {stats[foo]["success"]} / {stats[foo]["all"]}'
-            total[foo] += stats[foo]["all"]
-            total_success[foo] += stats[foo]["success"]
-        print(stats_str)
+#         for foo in user_app.FUNTION_TYPES:
+#             stats_str += f'\t{foo[:2]}: {stats[foo]["success"]} / {stats[foo]["all"]}'
+#             total[foo] += stats[foo]["all"]
+#             total_success[foo] += stats[foo]["success"]
+#         print(stats_str)
 
-    print("")
-    total_stats_str = f"TOTAL: \t\t"
-    for foo in user_app.FUNTION_TYPES:
-        total_stats_str += f"\t{foo[:2]}: {total_success[foo]} / {total[foo]}"
-    print(total_stats_str)
-
-
-def _update_erros() -> list:
-    new_errors = []
-    for i in range(len(households)):
-        h = households[i]
-        errs = h.get_new_errors()
-        for foo in user_app.FUNTION_TYPES:
-            if errs[foo] is None:
-                continue
-            for e in errs[foo]:
-                s = f"{e.timestamp} \t H{i:03d} {foo[:2]} \t {e.msg}"
-                new_errors.append(s)
-
-    new_errors.sort()
-    global offload_errors
-    offload_errors += new_errors
-    return new_errors
+#     print("")
+#     total_stats_str = f"TOTAL: \t\t"
+#     for foo in user_app.FUNTION_TYPES:
+#         total_stats_str += f"\t{foo[:2]}: {total_success[foo]} / {total[foo]}"
+#     print(total_stats_str)
 
 
-def get_new_errors():
-    for e in _update_erros():
-        print(e)
+# def _update_erros() -> list:
+#     new_errors = []
+#     for i in range(len(households)):
+#         h = households[i]
+#         errs = h.get_new_errors()
+#         for foo in user_app.FUNTION_TYPES:
+#             if errs[foo] is None:
+#                 continue
+#             for e in errs[foo]:
+#                 s = f"{e.timestamp} \t H{i:03d} {foo[:2]} \t {e.msg}"
+#                 new_errors.append(s)
+
+#     new_errors.sort()
+#     global offload_errors
+#     offload_errors += new_errors
+#     return new_errors
 
 
-def get_all_errors():
-    _update_erros()
-    for e in offload_errors:
-        print(e)
+# def get_new_errors():
+#     for e in _update_erros():
+#         print(e)
+
+
+# def get_all_errors():
+#     _update_erros()
+#     for e in offload_errors:
+#         print(e)

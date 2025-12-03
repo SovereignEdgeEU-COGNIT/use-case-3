@@ -2,8 +2,8 @@
     "START_DATE": "2024-09-23",
     "NUM_SIMULATION_DAYS": 90,
     "SPEEDUP": 60,
-    "SEM_ID_LIST": [123456, 169298, 235723, 329889, 337656, 359395, 655399, 683251, 730853, 832852],
-    "SEM_NUM": 10,
+    "SEM_ID_LIST": [123456, 235723, 329889, 832852],
+    "SEM_NUM": 4,
     "REQS_INIT": {
         "baseline": {
             "FLAVOUR": "Energy",
